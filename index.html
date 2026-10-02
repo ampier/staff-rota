@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="et">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Graafik — personalrota</title>
+  <meta name="description" content="Personaligraafik (Eesti) — staatiline MVP">
+  <meta name="color-scheme" content="light dark">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <h1><span aria-hidden="true">📅</span> Graafik</h1>
+    <div class="header-actions no-print">
+      <button class="btn btn-icon" id="btn-theme" type="button" title="Teema">◐</button>
+      <button class="btn" id="btn-import" type="button">Impordi</button>
+      <button class="btn" id="btn-export-json" type="button">JSON</button>
+      <button class="btn" id="btn-export-csv" type="button">CSV</button>
+      <button class="btn btn-primary" id="btn-export-print" type="button">Prindi</button>
+      <button class="btn" id="btn-reset" type="button" title="Lähtesta kogu andmestik seedile">Lähtesta</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar panel no-print">
+      <h2>Inimesed</h2>
+      <div style="display:flex;gap:0.35rem;margin-bottom:0.5rem">
+        <button class="btn btn-sm" id="btn-select-all" type="button">Kõik</button>
+        <button class="btn btn-sm" id="btn-select-none" type="button">Mitte ühtegi</button>
+      </div>
+      <div class="people-list" id="people-list"></div>
+      <div class="add-person">
+        <input type="text" id="new-person" class="field-input" placeholder="Uus nimi…" maxlength="40" aria-label="Uus isik">
+        <button class="btn btn-primary" id="btn-add-person" type="button">Lisa</button>
+      </div>
+
+      <h2 style="margin-top:1rem">Märkmed / Puhkused</h2>
+      <div class="notes">
+        <textarea id="notes-input" placeholder="Puhkused, lipupäevad…" aria-label="Märkmed"></textarea>
+      </div>
+
+      <h2 style="margin-top:1rem">Kuud</h2>
+      <div style="display:flex;gap:0.35rem;margin-bottom:0.4rem;flex-wrap:wrap">
+        <button class="btn btn-sm btn-primary" id="btn-new-month" type="button">+ Uus kuu</button>
+        <button class="btn btn-sm btn-danger" id="btn-clear-month" type="button">Tühjenda kuu</button>
+      </div>
+      <button class="btn btn-sm" id="btn-next-month" type="button" style="width:100%;margin-bottom:0.45rem" title="Loo järgmise kalendrikuu graafik">Loo järgmine kuu</button>
+      <div class="months-list" id="months-list"></div>
+
+      <h2 style="margin-top:1rem">Seaded</h2>
+      <label class="setting-row">
+        <input type="checkbox" id="strict-toggle" checked>
+        Blokeeri saadavusreeglite rikkumised
+      </label>
+      <p class="modal-hint">Kui väljas: ainult hoiatus (punane raam). Konfliktid (topeltbroneering) märgistatakse alati.</p>
+
+      <div class="legend">
+        <span><i class="swatch" style="background:var(--slot-am)"></i> 08–14</span>
+        <span><i class="swatch" style="background:var(--slot-pm)"></i> 14–20</span>
+        <span><i class="swatch" style="background:var(--slot-night)"></i> 20–08</span>
+        <span><i class="swatch" style="background:var(--slot-day)"></i> 08–20</span>
+        <span><i class="swatch" style="background:var(--slot-empty)"></i> täitmata</span>
+      </div>
+    </aside>
+
+    <main class="panel">
+      <div class="month-nav">
+        <button class="btn no-print" id="btn-prev" type="button" aria-label="Eelmine kuu">‹</button>
+        <h2 id="month-title">Oktoober 2026</h2>
+        <button class="btn no-print" id="btn-next" type="button" aria-label="Järgmine kuu">›</button>
+        <div class="month-pickers no-print">
+          <label class="sr-only" for="pick-month">Kuu</label>
+          <select id="pick-month" aria-label="Vali kuu"></select>
+          <label class="sr-only" for="pick-year">Aasta</label>
+          <select id="pick-year" aria-label="Vali aasta"></select>
+        </div>
+      </div>
+      <div class="stats-bar no-print" id="stats-bar"></div>
+      <div class="calendar" id="calendar" role="grid" aria-label="Kuu graafik"></div>
+    </main>
+  </div>
+
+  <div id="modal-backdrop" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="modal" id="modal-body"></div>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="js/seed.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
