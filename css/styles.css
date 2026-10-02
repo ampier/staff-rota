@@ -355,6 +355,11 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.person-row .btn-ics {
+  margin-top: 0.2rem;
+  padding: 0.12rem 0.4rem;
+  font-size: 0.68rem;
+}
 .person-row .status-pill {
   font-size: 0.62rem;
   font-weight: 700;
@@ -533,6 +538,9 @@ body {
 }
 .toast.show { opacity: 1; }
 
+.ics-report { font-size: 0.8rem; margin-top: 0.35rem; }
+.ics-report ul { margin: 0.2rem 0 0.55rem; padding-left: 1.1rem; }
+.ics-report li { margin: 0.12rem 0; }
 .import-area textarea {
   width: 100%;
   min-height: 150px;

@@ -34,6 +34,7 @@ open http://127.0.0.1:8765/
 - **Edit** — click slot (Esc / Ctrl⌘Enter); empty vs **N/A**; templates; copy/paste day; duplicate to next day; copy week → next week
 - **Conflicts** — same person overlapping times highlighted; free / busy / conflict pills
 - **Import** — paste `pdftotext` or upload `.txt`; seed October 2026
+- **Kalender (.ics)** — no accounts or OAuth. **Kuu ICS** downloads the open month (everyone, or only people checked in the sidebar). Each person has **Minu graafik**. **Impordi ICS** pastes or uploads a file, matches people by name, and adds or fills shifts; unknown names and clashes are listed and skipped
 - **Export** — JSON, CSV, A4-friendly printable HTML (always light)
 - **Dark mode** — system preference by default; toolbar cycles system → light → dark (persisted)
 - **Persist** — `localStorage` (`staff-rota-v2`; migrates v1)

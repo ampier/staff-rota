@@ -1077,6 +1077,7 @@
         <div style="flex:1;min-width:0">
           <div class="name">${escapeHtml(p.name)}</div>
           <div class="avail">${(p.availability || []).join(", ") || "kõik vahetused"}</div>
+          <button class="btn btn-sm btn-ics" type="button" data-ics="${escapeHtml(p.name)}" title="Laadi ${escapeHtml(p.name)} kuu .ics">Minu graafik</button>
         </div>
         <span class="status-pill ${statusClass}" title="Vahetusi kuus / konfliktid">${statusText}</span>
         <button class="btn btn-sm" data-edit="${escapeHtml(p.name)}" title="Reeglid" aria-label="Muuda ${escapeHtml(p.name)}">⚙</button>
@@ -1112,6 +1113,9 @@
     });
     list.querySelectorAll("[data-edit]").forEach((btn) => {
       btn.addEventListener("click", () => openPersonModal(btn.dataset.edit));
+    });
+    list.querySelectorAll("[data-ics]").forEach((btn) => {
+      btn.addEventListener("click", () => exportPersonIcs(btn.dataset.ics));
     });
   }
 
@@ -1521,6 +1525,408 @@
     });
   }
 
+  // ---------- iCalendar (.ics), no accounts ----------
+  function pad2(n) {
+    return String(n).padStart(2, "0");
+  }
+
+  function icsEscape(s) {
+    return String(s)
+      .replace(/\\/g, "\\\\")
+      .replace(/\r\n|\n|\r/g, "\\n")
+      .replace(/,/g, "\\,")
+      .replace(/;/g, "\\;");
+  }
+
+  function icsUnescape(s) {
+    let out = "";
+    for (let i = 0; i < s.length; i++) {
+      if (s[i] === "\\" && i + 1 < s.length) {
+        const n = s[i + 1];
+        if (n === "n" || n === "N") out += "\n";
+        else if (n === "\\") out += "\\";
+        else if (n === "," || n === ";") out += n;
+        else out += n;
+        i++;
+      } else out += s[i];
+    }
+    return out;
+  }
+
+  function foldIcs(text) {
+    const encoder = new TextEncoder();
+    const out = [];
+    for (const line of text.split("\r\n")) {
+      if (encoder.encode(line).length <= 75) {
+        out.push(line);
+        continue;
+      }
+      let rest = line;
+      let first = true;
+      while (rest.length) {
+        let take = Math.min(rest.length, first ? 75 : 74);
+        while (take > 1 && encoder.encode((first ? "" : " ") + rest.slice(0, take)).length > 75) take--;
+        out.push(first ? rest.slice(0, take) : " " + rest.slice(0, take));
+        rest = rest.slice(take);
+        first = false;
+      }
+    }
+    return out.join("\r\n");
+  }
+
+  function unfoldIcs(text) {
+    const lines = String(text).replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+    const out = [];
+    for (const line of lines) {
+      if ((line.startsWith(" ") || line.startsWith("\t")) && out.length) out[out.length - 1] += line.slice(1);
+      else out.push(line);
+    }
+    return out;
+  }
+
+  function icsNowStamp() {
+    const d = new Date();
+    return d.getUTCFullYear()
+      + pad2(d.getUTCMonth() + 1)
+      + pad2(d.getUTCDate())
+      + "T"
+      + pad2(d.getUTCHours())
+      + pad2(d.getUTCMinutes())
+      + pad2(d.getUTCSeconds())
+      + "Z";
+  }
+
+  function icsLocalStamp(y, m, d, hh, mm) {
+    return `${y}${pad2(m)}${pad2(d)}T${pad2(hh)}${pad2(mm)}00`;
+  }
+
+  function collectMonthShifts(names) {
+    const sched = currentSched();
+    const dim = daysInMonth(state.year, state.month);
+    const allow = names ? new Set([...names].map((n) => String(n).toUpperCase())) : null;
+    const events = [];
+    for (let d = 1; d <= dim; d++) {
+      for (const slot of sched.days[d] || []) {
+        if (!isAssigned(slot.person)) continue;
+        if (allow && !allow.has(slot.person.toUpperCase())) continue;
+        events.push({
+          year: state.year,
+          month: state.month,
+          day: d,
+          start: slot.start,
+          end: slot.end,
+          person: slot.person,
+        });
+      }
+    }
+    return events;
+  }
+
+  function buildIcs(events, calName) {
+    const lines = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "PRODID:-//Graafik//staff-rota//ET",
+      "CALSCALE:GREGORIAN",
+      "METHOD:PUBLISH",
+      `X-WR-CALNAME:${icsEscape(calName)}`,
+      "X-WR-TIMEZONE:Europe/Tallinn",
+    ];
+    const stamp = icsNowStamp();
+    for (const ev of events) {
+      const [sh, sm] = ev.start.split(":").map(Number);
+      const [eh, em] = ev.end.split(":").map(Number);
+      let ey = ev.year;
+      let emon = ev.month;
+      let ed = ev.day;
+      if (eh * 60 + em <= sh * 60 + sm) {
+        const next = new Date(ev.year, ev.month - 1, ev.day + 1);
+        ey = next.getFullYear();
+        emon = next.getMonth() + 1;
+        ed = next.getDate();
+      }
+      const uid = `staff-rota-${monthKey(ev.year, ev.month)}-${ev.day}-${ev.start}-${ev.end}-${ev.person}@staff-rota`;
+      const label = slotLabel(ev.start, ev.end);
+      lines.push("BEGIN:VEVENT");
+      lines.push(`UID:${icsEscape(uid)}`);
+      lines.push(`DTSTAMP:${stamp}`);
+      lines.push(`DTSTART:${icsLocalStamp(ev.year, ev.month, ev.day, sh, sm)}`);
+      lines.push(`DTEND:${icsLocalStamp(ey, emon, ed, eh, em)}`);
+      lines.push(`SUMMARY:${icsEscape(`${ev.person} ${ev.start}–${ev.end}`)}`);
+      lines.push(`DESCRIPTION:${icsEscape(`${label}\n${window.MONTH_NAMES_ET[ev.month]} ${ev.year}`)}`);
+      lines.push(`X-ROTA-PERSON:${icsEscape(ev.person)}`);
+      lines.push("END:VEVENT");
+    }
+    lines.push("END:VCALENDAR");
+    return foldIcs(lines.join("\r\n")) + "\r\n";
+  }
+
+  function downloadIcs(events, filename, calName) {
+    const body = buildIcs(events, calName);
+    downloadBlob(new Blob([body], { type: "text/calendar;charset=utf-8" }), filename);
+    return body;
+  }
+
+  function exportMonthIcs() {
+    if (!selectedPeople.size) {
+      toast("Vali vähemalt üks inimene");
+      return;
+    }
+    const everyone = state.people.length > 0 && state.people.every((p) => selectedPeople.has(p.name));
+    const events = collectMonthShifts(everyone ? null : selectedPeople);
+    if (!events.length) {
+      toast("Valitud inimestel pole vahetusi");
+      return;
+    }
+    const label = `${window.MONTH_NAMES_ET[state.month]} ${state.year}`;
+    const key = monthKey(state.year, state.month);
+    const who = everyone ? "" : " — " + [...new Set(events.map((e) => e.person))].join(", ");
+    downloadIcs(events, everyone ? `graafik-${key}.ics` : `graafik-${key}-valik.ics`, `Graafik ${label}${who}`);
+    toast(`Kuu ICS: ${events.length} vahetust`);
+  }
+
+  function exportPersonIcs(name) {
+    const events = collectMonthShifts(new Set([name]));
+    if (!events.length) {
+      toast(`${name}: sel kuul vahetusi pole`);
+      return;
+    }
+    const label = `${window.MONTH_NAMES_ET[state.month]} ${state.year}`;
+    const safe = name.replace(/[^\p{L}\p{N}-]+/gu, "-");
+    downloadIcs(events, `graafik-${monthKey(state.year, state.month)}-${safe}.ics`, `Minu graafik — ${name} — ${label}`);
+    toast(`Minu graafik: ${name} (${events.length})`);
+  }
+
+  function parseIcsEvents(text) {
+    const lines = unfoldIcs(text);
+    const events = [];
+    let cur = null;
+    for (const line of lines) {
+      if (line === "BEGIN:VEVENT") {
+        cur = {};
+        continue;
+      }
+      if (line === "END:VEVENT") {
+        if (cur) events.push(cur);
+        cur = null;
+        continue;
+      }
+      if (!cur) continue;
+      const idx = line.indexOf(":");
+      if (idx < 0) continue;
+      const meta = line.slice(0, idx);
+      const raw = line.slice(idx + 1);
+      const [name, ...params] = meta.split(";");
+      const paramMap = {};
+      params.forEach((p) => {
+        const eq = p.indexOf("=");
+        if (eq > 0) paramMap[p.slice(0, eq).toUpperCase()] = p.slice(eq + 1);
+      });
+      cur[name.toUpperCase()] = { value: icsUnescape(raw), raw, params: paramMap };
+    }
+    return events;
+  }
+
+  function tallinnWallFromUtc(y, month, day, hour, minute) {
+    const utc = new Date(Date.UTC(y, month - 1, day, hour, minute));
+    const fmt = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Europe/Tallinn",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    });
+    const parts = {};
+    for (const p of fmt.formatToParts(utc)) parts[p.type] = p.value;
+    let hh = Number(parts.hour);
+    const wall = {
+      year: Number(parts.year),
+      month: Number(parts.month),
+      day: Number(parts.day),
+      hour: hh === 24 ? 0 : hh,
+      minute: Number(parts.minute),
+    };
+    if (hh === 24) {
+      const next = new Date(wall.year, wall.month - 1, wall.day + 1);
+      wall.year = next.getFullYear();
+      wall.month = next.getMonth() + 1;
+      wall.day = next.getDate();
+    }
+    return wall;
+  }
+
+  function parseIcsWhen(prop) {
+    if (!prop || !prop.raw) return null;
+    const m = String(prop.raw).trim().match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?)?(Z)?$/);
+    if (!m) return null;
+    const allDay = !m[4];
+    let wall = {
+      year: Number(m[1]),
+      month: Number(m[2]),
+      day: Number(m[3]),
+      hour: Number(m[4] || 0),
+      minute: Number(m[5] || 0),
+      allDay,
+    };
+    if (m[7] && !allDay) wall = { ...tallinnWallFromUtc(wall.year, wall.month, wall.day, wall.hour, wall.minute), allDay: false };
+    return wall;
+  }
+
+  function matchIcsPerson(raw) {
+    if (!raw) return null;
+    const text = String(raw).replace(/\\n/g, " ").trim();
+    if (!text) return null;
+    const names = [...state.people].sort((a, b) => b.name.length - a.name.length);
+    const exact = names.find((p) => p.name.toUpperCase() === text.toUpperCase());
+    if (exact) return exact.name;
+    for (const p of names) {
+      const esc = p.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const re = new RegExp(`(^|[^A-ZÄÖÜÕa-zäöüõ0-9])${esc}([^A-ZÄÖÜÕa-zäöüõ0-9]|$)`, "i");
+      if (re.test(text)) return p.name;
+    }
+    return null;
+  }
+
+  function daySpan(a, b) {
+    const ms = Date.UTC(b.year, b.month - 1, b.day) - Date.UTC(a.year, a.month - 1, a.day);
+    return Math.round(ms / 86400000);
+  }
+
+  function applyIcsImport(text) {
+    const rawEvents = parseIcsEvents(text);
+    const report = { added: [], updated: [], unchanged: 0, unknown: [], conflicts: [], skipped: [] };
+    if (!rawEvents.length) return { ok: false, error: "Ühtegi kalendrisündmust ei leitud", report };
+    const touched = new Set();
+
+    for (const ev of rawEvents) {
+      const label = (ev.SUMMARY && ev.SUMMARY.value) || (ev.UID && ev.UID.value) || "(sündmus)";
+      const start = parseIcsWhen(ev.DTSTART);
+      const end = parseIcsWhen(ev.DTEND);
+      if (!start || start.allDay || !end || end.allDay) {
+        report.skipped.push(`${label} — kellaaeg puudub`);
+        continue;
+      }
+      const span = daySpan(start, end);
+      if (span < 0 || span > 1) {
+        report.skipped.push(`${label} — vahetus peab mahtuma ühte või kahte päeva`);
+        continue;
+      }
+      const startStr = `${pad2(start.hour)}:${pad2(start.minute)}`;
+      const endStr = `${pad2(end.hour)}:${pad2(end.minute)}`;
+      if (span === 0 && end.hour * 60 + end.minute <= start.hour * 60 + start.minute) {
+        report.skipped.push(`${label} — lõpp ei ole alguse järel`);
+        continue;
+      }
+      const person = matchIcsPerson(ev["X-ROTA-PERSON"] && ev["X-ROTA-PERSON"].value) || matchIcsPerson(ev.SUMMARY && ev.SUMMARY.value);
+      if (!person) {
+        const who = (ev["X-ROTA-PERSON"] && ev["X-ROTA-PERSON"].value) || (ev.SUMMARY && ev.SUMMARY.value) || "—";
+        report.unknown.push(`${who} (${start.day}.${pad2(start.month)} ${startStr}–${endStr})`);
+        continue;
+      }
+      const key = monthKey(start.year, start.month);
+      if (!state.schedules[key]) state.schedules[key] = { days: {}, notes: "", holidays: [] };
+      const sched = state.schedules[key];
+      if (!sched.days[start.day]) sched.days[start.day] = [];
+      const slots = sched.days[start.day];
+      const where = `${person} ${start.day}.${pad2(start.month)} ${startStr}–${endStr}`;
+      const same = slots.find((s) => s.start === startStr && s.end === endStr);
+      if (same) {
+        if (same.person === person) {
+          report.unchanged++;
+          continue;
+        }
+        if (!isAssigned(same.person)) {
+          same.person = person;
+          report.updated.push(where);
+          touched.add(key);
+          continue;
+        }
+        report.conflicts.push(`${start.day}.${pad2(start.month)} ${startStr}–${endStr}: olemas ${displayPerson(same.person)}, ICS pakub ${person}`);
+        continue;
+      }
+      const overlap = slots.some((s) =>
+        s.person === person && intervalsOverlap(rangeIntervals(s.start, s.end), rangeIntervals(startStr, endStr))
+      );
+      if (overlap) {
+        report.conflicts.push(`${person} kattub juba ${start.day}.${pad2(start.month)} ${startStr}–${endStr}`);
+        continue;
+      }
+      slots.push({ start: startStr, end: endStr, person });
+      slots.sort((a, b) => toMinutes(a.start) - toMinutes(b.start));
+      report.added.push(where);
+      touched.add(key);
+    }
+
+    if (touched.size) {
+      saveState();
+      const first = [...touched].sort()[0];
+      const p = parseMonthKey(first);
+      if (p.year !== state.year || p.month !== state.month) goToMonth(p.year, p.month);
+      else render();
+    }
+    return { ok: true, report, touched: [...touched] };
+  }
+
+  function icsReportHtml(result) {
+    if (!result.ok && result.error) return `<div class="err-box">${escapeHtml(result.error)}</div>`;
+    const r = result.report;
+    const list = (items) => items.length
+      ? `<ul>${items.slice(0, 12).map((x) => `<li>${escapeHtml(x)}</li>`).join("")}${items.length > 12 ? `<li>… ja veel ${items.length - 12}</li>` : ""}</ul>`
+      : `<p class="modal-hint">Pole</p>`;
+    return `
+      <div class="ics-report">
+        <div class="ok-box">Lisatud ${r.added.length} · uuendatud ${r.updated.length} · muutmata ${r.unchanged}</div>
+        <strong>Tundmatud (jäetud vahele)</strong>
+        ${list(r.unknown)}
+        <strong>Konfliktid (jäetud vahele)</strong>
+        ${list(r.conflicts)}
+        <strong>Vahele jäetud</strong>
+        ${list(r.skipped)}
+      </div>`;
+  }
+
+  function openIcsImportModal() {
+    openModal(`
+      <h3>Impordi ICS</h3>
+      <p class="modal-hint" style="margin-top:0">Staatiline fail — kontot ei küsita. Tuntud nimi lisatakse või täidetakse tühja pesa. Tundmatu nimi ja kattuvus jäetakse vahele.</p>
+      <label for="m-ics">Kleebi .ics</label>
+      <div class="import-area"><textarea id="m-ics" placeholder="BEGIN:VCALENDAR..."></textarea></div>
+      <label for="m-ics-file">või laadi .ics</label>
+      <input type="file" id="m-ics-file" accept=".ics,text/calendar,.txt">
+      <div id="m-ics-report"></div>
+      <div class="modal-actions">
+        <button class="btn" id="m-cancel" type="button">Sulge</button>
+        <button class="btn btn-primary" id="m-save" type="button">Impordi</button>
+      </div>
+    `, {
+      wide: true,
+      onOpen(body) {
+        body.querySelector("#m-ics-file").addEventListener("change", (e) => {
+          const f = e.target.files[0];
+          if (!f) return;
+          const reader = new FileReader();
+          reader.onload = () => { body.querySelector("#m-ics").value = String(reader.result || ""); };
+          reader.readAsText(f);
+        });
+        body.querySelector("#m-cancel").onclick = closeModal;
+        body.querySelector("#m-save").onclick = () => {
+          const text = body.querySelector("#m-ics").value;
+          if (!/BEGIN:VCALENDAR/i.test(text)) {
+            toast("See ei ole .ics fail");
+            return;
+          }
+          const result = applyIcsImport(text);
+          body.querySelector("#m-ics-report").innerHTML = icsReportHtml(result);
+          if (!result.ok) return;
+          const r = result.report;
+          toast(`ICS: +${r.added.length} / uuendatud ${r.updated.length} / vahele ${r.unknown.length + r.conflicts.length + r.skipped.length}`);
+        };
+      },
+    });
+  }
+
   // ---------- export ----------
   function exportJSON() {
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
@@ -1632,6 +2038,8 @@
     const sideNext = document.getElementById("btn-next-month-side");
     if (sideNext) sideNext.onclick = openNextMonthDialog;
     document.getElementById("btn-import").onclick = openImportModal;
+    document.getElementById("btn-import-ics").onclick = openIcsImportModal;
+    document.getElementById("btn-export-ics").onclick = exportMonthIcs;
     document.getElementById("btn-export-json").onclick = exportJSON;
     document.getElementById("btn-export-csv").onclick = exportCSV;
     document.getElementById("btn-export-print").onclick = exportPrintableHTML;
