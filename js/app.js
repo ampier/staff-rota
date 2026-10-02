@@ -63,14 +63,14 @@
 
   function currentSched() {
     const key = monthKey(state.year, state.month);
-    if (!state.schedules[key]) {
-      state.schedules[key] = { days: {}, notes: "", holidays: [] };
+    if (!team().schedules[key]) {
+      team().schedules[key] = { days: {}, notes: "", holidays: [] };
     }
-    return state.schedules[key];
+    return team().schedules[key];
   }
 
   function saveCurrentMonthFromLegacy(days, notes, holidays) {
-    state.schedules[monthKey(state.year, state.month)] = {
+    team().schedules[monthKey(state.year, state.month)] = {
       days: days || {},
       notes: notes || "",
       holidays: holidays || [],
@@ -130,21 +130,45 @@
     return out;
   }
 
+  function team() {
+    return state.teams[state.activeTeamId];
+  }
+
+  function ensureTeams(s) {
+    if (s.teams && Object.keys(s.teams).length) {
+      if (!s.activeTeamId || !s.teams[s.activeTeamId]) s.activeTeamId = Object.keys(s.teams)[0];
+      s.version = 3;
+      delete s.people;
+      delete s.schedules;
+      return s;
+    }
+    const people = s.people || [];
+    const schedules = s.schedules || {};
+    s.version = 3;
+    s.activeTeamId = "vastuvott";
+    s.teams = {
+      vastuvott: { id: "vastuvott", name: "Vastuvõtt", people, schedules },
+    };
+    delete s.people;
+    delete s.schedules;
+    return s;
+  }
+
   function loadState() {
     try {
       const raw2 = localStorage.getItem(STORAGE_KEY);
       if (raw2) {
-        state = JSON.parse(raw2);
-        if (!state.schedules) {
-          // broken — reseed
+        state = ensureTeams(JSON.parse(raw2));
+        if (!team() || !team().schedules || !team().people) {
           seedFromDefault();
           return;
         }
+        saveState();
         return;
       }
       const raw1 = localStorage.getItem(STORAGE_KEY_V1);
       if (raw1) {
-        state = migrateV1(raw1);
+        state = ensureTeams(migrateV1(raw1));
         saveState();
         return;
       }
@@ -161,46 +185,118 @@
   }
 
   function loadFilter() {
+    const names = new Set(team().people.map((p) => p.name));
     try {
       const raw = localStorage.getItem(FILTER_KEY);
       if (raw) {
-        selectedPeople = new Set(JSON.parse(raw));
-        return;
+        const parsed = JSON.parse(raw);
+        const saved = parsed && parsed[state.activeTeamId];
+        if (Array.isArray(saved)) {
+          selectedPeople = new Set(saved.filter((n) => names.has(n)));
+          return;
+        }
       }
     } catch (_) {}
-    selectedPeople = new Set(state.people.map((p) => p.name));
+    selectedPeople = names;
   }
 
   function saveFilter() {
     try {
-      localStorage.setItem(FILTER_KEY, JSON.stringify([...selectedPeople]));
+      let all = {};
+      const raw = localStorage.getItem(FILTER_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && !Array.isArray(parsed)) all = parsed;
+      }
+      all[state.activeTeamId] = [...selectedPeople];
+      localStorage.setItem(FILTER_KEY, JSON.stringify(all));
     } catch (_) {}
   }
 
   function seedFromDefault() {
     const s = window.ROTA_SEED;
     const key = monthKey(s.year, s.month);
-    state = {
-      version: 2,
-      year: s.year,
-      month: s.month,
-      people: s.people.map((p, i) => ({
-        id: p.id,
-        name: p.name,
-        availability: [...p.availability],
-        color: COLORS[i % COLORS.length],
-      })),
-      schedules: {
-        [key]: {
-          days: normalizeDays(JSON.parse(JSON.stringify(s.days))),
-          notes: s.notes,
-          holidays: [...s.holidays],
-        },
+    const people = s.people.map((p, i) => ({
+      id: p.id,
+      name: p.name,
+      availability: [...p.availability],
+      color: COLORS[i % COLORS.length],
+    }));
+    const schedules = {
+      [key]: {
+        days: normalizeDays(JSON.parse(JSON.stringify(s.days))),
+        notes: s.notes,
+        holidays: [...s.holidays],
       },
     };
-    selectedPeople = new Set(state.people.map((p) => p.name));
+    state = {
+      version: 3,
+      year: s.year,
+      month: s.month,
+      activeTeamId: "vastuvott",
+      teams: {
+        vastuvott: { id: "vastuvott", name: "Vastuvõtt", people, schedules },
+      },
+    };
+    selectedPeople = new Set(team().people.map((p) => p.name));
     saveState();
     saveFilter();
+  }
+
+  function selectAllCurrentTeam() {
+    selectedPeople = new Set(team().people.map((p) => p.name));
+    saveFilter();
+  }
+
+  function switchTeam(id) {
+    if (!state.teams[id] || id === state.activeTeamId) return;
+    state.activeTeamId = id;
+    saveState();
+    loadFilter();
+    render();
+    toast(team().name);
+  }
+
+  function addTeam(name) {
+    const clean = name.trim();
+    if (!clean) return;
+    let id = clean.toLowerCase().replace(/[^a-z0-9äöüõ]+/gi, "-").replace(/^-|-$/g, "") || "meeskond";
+    let n = 2;
+    while (state.teams[id]) {
+      id = `${id.replace(/-\d+$/, "")}-${n}`;
+      n++;
+    }
+    state.teams[id] = { id, name: clean, people: [], schedules: {} };
+    state.activeTeamId = id;
+    saveState();
+    selectAllCurrentTeam();
+    render();
+    toast(`Meeskond ${clean} loodud`);
+  }
+
+  function renameActiveTeam(name) {
+    const clean = name.trim();
+    if (!clean) return;
+    team().name = clean;
+    saveState();
+    render();
+    toast("Meeskonna nimi salvestatud");
+  }
+
+  function deleteActiveTeam() {
+    const ids = Object.keys(state.teams);
+    if (ids.length <= 1) {
+      toast("Viimast meeskonda ei saa kustutada");
+      return;
+    }
+    const current = team();
+    if (!confirm(`Kustuta meeskond ${current.name}? Selle graafikud kaovad.`)) return;
+    delete state.teams[current.id];
+    state.activeTeamId = Object.keys(state.teams).sort()[0];
+    saveState();
+    loadFilter();
+    render();
+    toast("Meeskond kustutatud");
   }
 
   // ---------- time helpers ----------
@@ -273,7 +369,7 @@
   }
 
   function personByName(name) {
-    return state.people.find((p) => p.name === name);
+    return team().people.find((p) => p.name === name);
   }
 
   function isAssigned(person) {
@@ -456,7 +552,7 @@
     state.year = parsed.year;
     state.month = parsed.month;
     const key = monthKey(parsed.year, parsed.month);
-    state.schedules[key] = {
+    team().schedules[key] = {
       days: normalizeDays(parsed.days),
       notes: parsed.notes || currentSched().notes,
       holidays: parsed.holidays.length ? parsed.holidays : [],
@@ -464,11 +560,11 @@
     if (mergePeople) {
       for (const name of parsed.foundPeople) {
         if (!personByName(name)) {
-          state.people.push({
+          team().people.push({
             id: name.toLowerCase().replace(/[^a-z0-9äöüõ]+/gi, "-"),
             name,
             availability: [],
-            color: COLORS[state.people.length % COLORS.length],
+            color: COLORS[team().people.length % COLORS.length],
           });
           selectedPeople.add(name);
         }
@@ -593,7 +689,7 @@
       currentSched().notes || "",
       state.year,
       state.month,
-      state.people.map((p) => p.name)
+      team().people.map((p) => p.name)
     );
   }
 
@@ -603,7 +699,7 @@
 
   function weekdaySlotLists(year, month) {
     const lists = [[], [], [], [], [], [], []];
-    const sched = state.schedules[monthKey(year, month)];
+    const sched = team().schedules[monthKey(year, month)];
     if (!sched) return lists;
     const dim = daysInMonth(year, month);
     for (let d = 1; d <= dim; d++) {
@@ -646,7 +742,7 @@
     const days = {};
     const loadMin = {};
     const loadN = {};
-    state.people.forEach((p) => {
+    team().people.forEach((p) => {
       loadMin[p.name] = 0;
       loadN[p.name] = 0;
     });
@@ -662,7 +758,7 @@
       const prevSlots = d > 1 ? days[d - 1] : null;
       for (const slot of skeleton) {
         const tiers = { best: [], second: [], conflict: [], violation: [] };
-        for (const p of state.people) {
+        for (const p of team().people) {
           if (onVac(p.name, d)) continue;
           const availOk = checkAvailability(p.name, slot.start, slot.end).ok;
           const overlap =
@@ -714,7 +810,7 @@
       return days;
     }
     if (mode === "fair") {
-      const vacations = parseVacations(vacationText, dstYear, dstMonth, state.people.map((p) => p.name));
+      const vacations = parseVacations(vacationText, dstYear, dstMonth, team().people.map((p) => p.name));
       return buildFairDays(lists, structures, dstYear, dstMonth, vacations);
     }
     const days = {};
@@ -794,7 +890,7 @@
         const preview = body.querySelector("#m-vac-preview");
         const vacInput = body.querySelector("#m-vac");
         const updatePreview = () => {
-          const map = parseVacations(vacInput.value, next.year, next.month, state.people.map((p) => p.name));
+          const map = parseVacations(vacInput.value, next.year, next.month, team().people.map((p) => p.name));
           preview.textContent = formatVacationPreview(map);
         };
         vacInput.addEventListener("input", updatePreview);
@@ -804,12 +900,12 @@
           const mode = (body.querySelector('input[name="next-mode"]:checked') || {}).value || "empty";
           const vacationText = vacInput.value.trim();
           const key = monthKey(next.year, next.month);
-          const existing = state.schedules[key];
+          const existing = team().schedules[key];
           if (existing && Object.keys(existing.days || {}).length) {
             if (!confirm(`${nextLabel} on juba täidetud. Asenda uue graafikuga?`)) return;
           }
           const days = buildNextMonthDays(mode, srcYear, srcMonth, next.year, next.month, vacationText);
-          state.schedules[key] = {
+          team().schedules[key] = {
             days,
             notes: `Puhkused: ${vacationText || "(tühi)"}`,
             holidays: [],
@@ -831,9 +927,9 @@
     state.year = year;
     state.month = month;
     const key = monthKey(year, month);
-    if (!state.schedules[key]) {
+    if (!team().schedules[key]) {
       if (createEmpty !== false) {
-        state.schedules[key] = { days: {}, notes: "", holidays: [] };
+        team().schedules[key] = { days: {}, notes: "", holidays: [] };
       }
     }
     saveState();
@@ -850,17 +946,17 @@
 
   function deleteMonth(key) {
     const cur = monthKey(state.year, state.month);
-    if (!state.schedules[key]) return;
+    if (!team().schedules[key]) return;
     if (!confirm(`Kustuta kuu ${key} andmed jäädavalt?`)) return;
-    delete state.schedules[key];
+    delete team().schedules[key];
     if (key === cur) {
-      const keys = Object.keys(state.schedules).sort();
+      const keys = Object.keys(team().schedules).sort();
       if (keys.length) {
         const p = parseMonthKey(keys[keys.length - 1]);
         state.year = p.year;
         state.month = p.month;
       } else {
-        state.schedules[cur] = { days: {}, notes: "", holidays: [] };
+        team().schedules[cur] = { days: {}, notes: "", holidays: [] };
       }
     }
     saveState();
@@ -963,8 +1059,48 @@
   }
 
   // ---------- render ----------
+  function renderTeams() {
+    const sel = document.getElementById("team-select");
+    if (!sel) return;
+    const ids = Object.keys(state.teams).sort((a, b) =>
+      state.teams[a].name.localeCompare(state.teams[b].name, "et")
+    );
+    sel.innerHTML = ids.map((id) =>
+      `<option value="${escapeHtml(id)}"${id === state.activeTeamId ? " selected" : ""}>${escapeHtml(state.teams[id].name)}</option>`
+    ).join("");
+    const del = document.getElementById("btn-delete-team");
+    if (del) del.disabled = ids.length <= 1;
+  }
+
+  function openTeamNameModal(mode) {
+    const editing = mode === "rename";
+    openModal(`
+      <h3>${editing ? "Nimeta meeskond ümber" : "Uus meeskond"}</h3>
+      <label for="m-team">Nimi</label>
+      <input type="text" id="m-team" maxlength="40" value="${editing ? escapeHtml(team().name) : ""}" placeholder="Koristus, köök…">
+      <p class="modal-hint">Igal meeskonnal on oma inimesed ja kuugraafik. Vastuvõtt on hosteli vastuvõtt.</p>
+      <div class="modal-actions">
+        <button class="btn" id="m-cancel" type="button">Tühista</button>
+        <button class="btn btn-primary" id="m-save" type="button">${editing ? "Salvesta" : "Lisa"}</button>
+      </div>
+    `, {
+      onOpen(body) {
+        body.querySelector("#m-cancel").onclick = closeModal;
+        body.querySelector("#m-save").onclick = () => {
+          const name = body.querySelector("#m-team").value;
+          if (!name.trim()) return;
+          if (editing) renameActiveTeam(name);
+          else addTeam(name);
+          closeModal();
+        };
+      },
+    });
+  }
+
   function render() {
     refreshVacationMap();
+    renderTeams();
+    document.title = `Rohe Hostel Graafik — ${team().name}`;
     renderMonthPickers();
     renderPeople();
     renderCalendar();
@@ -1031,12 +1167,12 @@
   function renderMonthsList() {
     const el = document.getElementById("months-list");
     if (!el) return;
-    const keys = Object.keys(state.schedules).sort();
+    const keys = Object.keys(team().schedules).sort();
     const cur = monthKey(state.year, state.month);
     el.innerHTML = keys.map((k) => {
       const p = parseMonthKey(k);
       const label = `${window.MONTH_NAMES_ET[p.month]} ${p.year}`;
-      const days = Object.keys(state.schedules[k].days || {}).length;
+      const days = Object.keys(team().schedules[k].days || {}).length;
       return `<div class="month-item ${k === cur ? "current" : ""}">
         <span>${label} <small style="color:var(--muted)">(${days} päeva)</small></span>
         <button class="btn btn-sm" data-goto="${k}">Ava</button>
@@ -1058,11 +1194,11 @@
   function renderPeople() {
     const list = document.getElementById("people-list");
     list.innerHTML = "";
-    if (!state.people.length) {
+    if (!team().people.length) {
       list.innerHTML = `<div class="empty-day-hint">Inimesi pole. Lisa esimene töötaja allpool.</div>`;
       return;
     }
-    state.people.forEach((p) => {
+    team().people.forEach((p) => {
       const stats = personMonthStats(p.name);
       const row = document.createElement("div");
       let statusClass = "free";
@@ -1098,9 +1234,9 @@
       btn.addEventListener("click", () => {
         const name = btn.dataset.remove;
         if (!confirm(`Eemalda ${name} kõigist kuudest? Määrangud tühistatakse.`)) return;
-        state.people = state.people.filter((p) => p.name !== name);
+        team().people = team().people.filter((p) => p.name !== name);
         selectedPeople.delete(name);
-        for (const sched of Object.values(state.schedules)) {
+        for (const sched of Object.values(team().schedules)) {
           for (const slots of Object.values(sched.days)) {
             slots.forEach((s) => { if (s.person === name) s.person = ""; });
           }
@@ -1144,7 +1280,7 @@
       cal.appendChild(empty);
     }
 
-    const filterActive = selectedPeople.size > 0 && selectedPeople.size < state.people.length;
+    const filterActive = selectedPeople.size > 0 && selectedPeople.size < team().people.length;
 
     for (let d = 1; d <= dim; d++) {
       const cell = document.createElement("div");
@@ -1164,7 +1300,7 @@
       const flags = [];
       if (hol) flags.push(`<span class="day-flag" title="${escapeHtml(hol.label)}">${escapeHtml(hol.label)}</span>`);
       if (away.length) flags.push(`<span class="day-flag" title="Puhkus: ${escapeHtml(away.join(", "))}">Puhkus</span>`);
-      num.innerHTML = `<span>${d}</span>${flags.join("")}`;
+      num.innerHTML = `<span><span class="day-wd">${window.WEEKDAY_FULL_ET[wd]}</span>${d}</span>${flags.join("")}`;
       cell.appendChild(num);
 
       if (!slots.length) {
@@ -1272,7 +1408,7 @@
   function openSlotModal(day, idx) {
     const sched = currentSched();
     const slot = sched.days[day][idx];
-    const options = state.people
+    const options = team().people
       .map((p) => `<option value="${escapeHtml(p.name)}" ${slot.person === p.name ? "selected" : ""}>${escapeHtml(p.name)}</option>`)
       .join("");
 
@@ -1461,7 +1597,7 @@
           if (old !== newName) {
             selectedPeople.delete(old);
             selectedPeople.add(newName);
-            for (const sched of Object.values(state.schedules)) {
+            for (const sched of Object.values(team().schedules)) {
               for (const slots of Object.values(sched.days)) {
                 slots.forEach((s) => { if (s.person === old) s.person = newName; });
               }
@@ -1501,13 +1637,18 @@
         });
         body.querySelector("#m-cancel").onclick = closeModal;
         body.querySelector("#m-seed").onclick = () => {
-          if (!confirm("Lähtesta Oktoober 2026 seedandmetele? (muud kuud säilivad, inimesed asendatakse seediga)")) return;
-          const keep = { ...state.schedules };
-          seedFromDefault();
-          // preserve other months
-          for (const [k, v] of Object.entries(keep)) {
-            if (k !== monthKey(2026, 10)) state.schedules[k] = v;
+          if (!confirm("Lähtesta Vastuvõtu Oktoober 2026 seedile? Teised meeskonnad ja teised kuud jäävad alles. Vastuvõtu inimesed asendatakse.")) return;
+          const others = {};
+          for (const [id, t] of Object.entries(state.teams)) {
+            if (id !== "vastuvott") others[id] = t;
           }
+          const keepMonths = state.teams.vastuvott ? { ...state.teams.vastuvott.schedules } : {};
+          seedFromDefault();
+          Object.assign(state.teams, others);
+          for (const [k, v] of Object.entries(keepMonths)) {
+            if (k !== monthKey(2026, 10)) state.teams.vastuvott.schedules[k] = v;
+          }
+          state.activeTeamId = "vastuvott";
           saveState();
           closeModal();
           render();
@@ -1626,7 +1767,7 @@
     const lines = [
       "BEGIN:VCALENDAR",
       "VERSION:2.0",
-      "PRODID:-//Graafik//staff-rota//ET",
+      "PRODID:-//Rohe Hostel//Rohe Graafik//ET",
       "CALSCALE:GREGORIAN",
       "METHOD:PUBLISH",
       `X-WR-CALNAME:${icsEscape(calName)}`,
@@ -1672,16 +1813,17 @@
       toast("Vali vähemalt üks inimene");
       return;
     }
-    const everyone = state.people.length > 0 && state.people.every((p) => selectedPeople.has(p.name));
+    const everyone = team().people.length > 0 && team().people.every((p) => selectedPeople.has(p.name));
     const events = collectMonthShifts(everyone ? null : selectedPeople);
     if (!events.length) {
       toast("Valitud inimestel pole vahetusi");
       return;
     }
-    const label = `${window.MONTH_NAMES_ET[state.month]} ${state.year}`;
+    const label = `${team().name} — ${window.MONTH_NAMES_ET[state.month]} ${state.year}`;
     const key = monthKey(state.year, state.month);
     const who = everyone ? "" : " — " + [...new Set(events.map((e) => e.person))].join(", ");
-    downloadIcs(events, everyone ? `graafik-${key}.ics` : `graafik-${key}-valik.ics`, `Graafik ${label}${who}`);
+    const fileTeam = team().id;
+    downloadIcs(events, everyone ? `rohe-graafik-${fileTeam}-${key}.ics` : `rohe-graafik-${fileTeam}-${key}-valik.ics`, `Rohe Graafik — ${label}${who}`);
     toast(`Kuu ICS: ${events.length} vahetust`);
   }
 
@@ -1691,9 +1833,9 @@
       toast(`${name}: sel kuul vahetusi pole`);
       return;
     }
-    const label = `${window.MONTH_NAMES_ET[state.month]} ${state.year}`;
+    const label = `${team().name} — ${window.MONTH_NAMES_ET[state.month]} ${state.year}`;
     const safe = name.replace(/[^\p{L}\p{N}-]+/gu, "-");
-    downloadIcs(events, `graafik-${monthKey(state.year, state.month)}-${safe}.ics`, `Minu graafik — ${name} — ${label}`);
+    downloadIcs(events, `rohe-graafik-${team().id}-${monthKey(state.year, state.month)}-${safe}.ics`, `Minu graafik — ${name} — ${label}`);
     toast(`Minu graafik: ${name} (${events.length})`);
   }
 
@@ -1778,7 +1920,7 @@
     if (!raw) return null;
     const text = String(raw).replace(/\\n/g, " ").trim();
     if (!text) return null;
-    const names = [...state.people].sort((a, b) => b.name.length - a.name.length);
+    const names = [...team().people].sort((a, b) => b.name.length - a.name.length);
     const exact = names.find((p) => p.name.toUpperCase() === text.toUpperCase());
     if (exact) return exact.name;
     for (const p of names) {
@@ -1826,8 +1968,8 @@
         continue;
       }
       const key = monthKey(start.year, start.month);
-      if (!state.schedules[key]) state.schedules[key] = { days: {}, notes: "", holidays: [] };
-      const sched = state.schedules[key];
+      if (!team().schedules[key]) team().schedules[key] = { days: {}, notes: "", holidays: [] };
+      const sched = team().schedules[key];
       if (!sched.days[start.day]) sched.days[start.day] = [];
       const slots = sched.days[start.day];
       const where = `${person} ${start.day}.${pad2(start.month)} ${startStr}–${endStr}`;
@@ -1977,7 +2119,7 @@
         <td class="note">${hol ? escapeHtml(hol.label) : ""}</td>
       </tr>`;
     }
-    const title = `Graafik - ${window.MONTH_NAMES_ET[state.month]} ${state.year}`;
+    const title = `Rohe Hostel Graafik — ${team().name} — ${window.MONTH_NAMES_ET[state.month]} ${state.year}`;
     const html = `<!DOCTYPE html>
 <html lang="et"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
 <style>
@@ -2029,12 +2171,16 @@
     loadState();
     loadFilter();
     if (selectedPeople.size === 0) {
-      selectedPeople = new Set(state.people.map((p) => p.name));
+      selectedPeople = new Set(team().people.map((p) => p.name));
     }
 
     document.getElementById("btn-prev").onclick = () => changeMonth(-1);
     document.getElementById("btn-next").onclick = () => changeMonth(1);
     document.getElementById("btn-next-month").onclick = openNextMonthDialog;
+    document.getElementById("team-select").onchange = (e) => switchTeam(e.target.value);
+    document.getElementById("btn-add-team").onclick = () => openTeamNameModal("add");
+    document.getElementById("btn-rename-team").onclick = () => openTeamNameModal("rename");
+    document.getElementById("btn-delete-team").onclick = deleteActiveTeam;
     const sideNext = document.getElementById("btn-next-month-side");
     if (sideNext) sideNext.onclick = openNextMonthDialog;
     document.getElementById("btn-import").onclick = openImportModal;
@@ -2067,13 +2213,13 @@
             const m = Number(body.querySelector("#m-nm").value);
             const y = Number(body.querySelector("#m-ny").value);
             const key = monthKey(y, m);
-            if (state.schedules[key] && Object.keys(state.schedules[key].days).length) {
+            if (team().schedules[key] && Object.keys(team().schedules[key].days).length) {
               if (!confirm("Sellel kuul on juba andmeid. Ava olemasolev?")) return;
               goToMonth(y, m);
               closeModal();
               return;
             }
-            state.schedules[key] = { days: {}, notes: "", holidays: [] };
+            team().schedules[key] = { days: {}, notes: "", holidays: [] };
             goToMonth(y, m);
             closeModal();
             toast("Uus kuu loodud");
@@ -2083,7 +2229,7 @@
     };
 
     document.getElementById("btn-reset").onclick = () => {
-      if (!confirm("Lähtesta kogu andmestik Oktoober 2026 seedile? Kõik kuud kustutatakse.")) return;
+      if (!confirm("Lähtesta kogu andmestik Vastuvõtu Oktoober 2026 seedile? Kõik meeskonnad ja kuud kustutatakse.")) return;
       try {
         localStorage.removeItem(STORAGE_KEY);
         localStorage.removeItem(STORAGE_KEY_V1);
@@ -2094,7 +2240,7 @@
     };
 
     document.getElementById("btn-select-all").onclick = () => {
-      selectedPeople = new Set(state.people.map((p) => p.name));
+      selectedPeople = new Set(team().people.map((p) => p.name));
       saveFilter();
       render();
     };
@@ -2148,11 +2294,11 @@
     const name = input.value.trim().toUpperCase();
     if (!name) return;
     if (personByName(name)) { toast("Juba olemas"); return; }
-    state.people.push({
+    team().people.push({
       id: name.toLowerCase().replace(/[^a-z0-9äöüõ]+/gi, "-"),
       name,
       availability: [],
-      color: COLORS[state.people.length % COLORS.length],
+      color: COLORS[team().people.length % COLORS.length],
     });
     selectedPeople.add(name);
     input.value = "";

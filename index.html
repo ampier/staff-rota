@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Graafik — personalrota</title>
-  <meta name="description" content="Personaligraafik (Eesti) — staatiline MVP">
+  <title>Rohe Hostel Graafik</title>
+  <meta name="description" content="Rohe Hostel Graafik — vastuvõtu ja teiste meeskondade töögraafik">
   <meta name="color-scheme" content="light dark">
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
   <header class="app-header">
-    <h1><span aria-hidden="true">📅</span> Graafik</h1>
+    <h1><span aria-hidden="true">📅</span> <span class="brand-full">Rohe Hostel Graafik</span><span class="brand-short">Rohe Graafik</span></h1>
     <div class="header-actions no-print">
       <button class="btn btn-icon" id="btn-theme" type="button" title="Teema">◐</button>
       <button class="btn" id="btn-import" type="button">Impordi</button>
@@ -24,6 +24,30 @@
   </header>
 
   <div class="layout">
+    <main class="panel main-panel">
+      <div class="team-bar no-print">
+        <label for="team-select">Meeskond</label>
+        <select id="team-select" aria-label="Meeskond"></select>
+        <button class="btn btn-sm" id="btn-add-team" type="button">Uus meeskond</button>
+        <button class="btn btn-sm" id="btn-rename-team" type="button">Nimeta</button>
+        <button class="btn btn-sm btn-danger" id="btn-delete-team" type="button">Kustuta</button>
+      </div>
+      <div class="month-nav">
+        <button class="btn no-print" id="btn-prev" type="button" aria-label="Eelmine kuu">‹</button>
+        <h2 id="month-title">Oktoober 2026</h2>
+        <button class="btn no-print" id="btn-next" type="button" aria-label="Järgmine kuu">›</button>
+        <button class="btn btn-primary no-print" id="btn-next-month" type="button">Loo järgmine kuu</button>
+        <div class="month-pickers no-print">
+          <label class="sr-only" for="pick-month">Kuu</label>
+          <select id="pick-month" aria-label="Vali kuu"></select>
+          <label class="sr-only" for="pick-year">Aasta</label>
+          <select id="pick-year" aria-label="Vali aasta"></select>
+        </div>
+      </div>
+      <div class="stats-bar no-print" id="stats-bar"></div>
+      <div class="calendar" id="calendar" role="grid" aria-label="Kuu graafik"></div>
+    </main>
+
     <aside class="sidebar panel no-print">
       <h2>Inimesed</h2>
       <div style="display:flex;gap:0.35rem;margin-bottom:0.5rem">
@@ -64,23 +88,6 @@
         <span><i class="swatch" style="background:var(--slot-empty)"></i> täitmata</span>
       </div>
     </aside>
-
-    <main class="panel">
-      <div class="month-nav">
-        <button class="btn no-print" id="btn-prev" type="button" aria-label="Eelmine kuu">‹</button>
-        <h2 id="month-title">Oktoober 2026</h2>
-        <button class="btn no-print" id="btn-next" type="button" aria-label="Järgmine kuu">›</button>
-        <button class="btn btn-primary no-print" id="btn-next-month" type="button">Loo järgmine kuu</button>
-        <div class="month-pickers no-print">
-          <label class="sr-only" for="pick-month">Kuu</label>
-          <select id="pick-month" aria-label="Vali kuu"></select>
-          <label class="sr-only" for="pick-year">Aasta</label>
-          <select id="pick-year" aria-label="Vali aasta"></select>
-        </div>
-      </div>
-      <div class="stats-bar no-print" id="stats-bar"></div>
-      <div class="calendar" id="calendar" role="grid" aria-label="Kuu graafik"></div>
-    </main>
   </div>
 
   <div id="modal-backdrop" class="modal-backdrop hidden" role="dialog" aria-modal="true">
