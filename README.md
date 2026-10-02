@@ -51,18 +51,15 @@ Paths are relative; include `.nojekyll` for GitHub Pages.
 
 ### GitHub Pages
 
-1. Create a repo and push this folder (or the repo root = `staff-rota` contents).
-2. **Settings → Pages → Deploy from branch** → `main` / `/ (root)` (or `/docs` if you put files there).
-3. Site URL: `https://<user>.github.io/<repo>/`
+This repository is published from the **`main`** branch, folder **`/ (root)`**. `.nojekyll` is in the root so Pages serves the files as-is (no Jekyll). Paths in `index.html` are relative.
 
-```bash
-git init
-git add .
-git commit -m "Graafik staff rota"
-git branch -M main
-git remote add origin git@github.com:<user>/<repo>.git
-git push -u origin main
-```
+**Live site:** https://ampier.github.io/staff-rota/
+
+If the site is not up yet, enable it once:
+
+1. **Settings → Pages → Build and deployment → Deploy from a branch**
+2. Branch: `main`, folder: `/ (root)` → Save
+3. Wait for the Pages build, then open https://ampier.github.io/staff-rota/
 
 ### Cloudflare Pages
 
