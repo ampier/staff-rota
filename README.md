@@ -29,6 +29,7 @@ open http://127.0.0.1:8765/
 ## Features
 
 - **Month calendar** with colour-coded shifts (08–14 / 14–20 / 20–08 / 08–20)
+- **Täna** — when the open month contains today’s date (browser local timezone), that day gets a blue border, tint, and a “Täna” label. A past or future month has no today highlight
 - **Multi-month storage** — switching months keeps each month’s data; add / clear / delete months
 - **Loo järgmine kuu** — next calendar month from the one on screen:
   - **Tühi mall** — same weekday shift slots, names cleared

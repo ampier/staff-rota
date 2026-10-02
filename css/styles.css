@@ -27,6 +27,9 @@
   --modal-scrim: rgba(15, 23, 42, 0.45);
   --toast-bg: #0f172a;
   --toast-fg: #fff;
+  --today: #1d4ed8;
+  --today-fg: #ffffff;
+  --today-soft: #dbeafe;
   color-scheme: light;
 }
 
@@ -57,6 +60,9 @@
   --modal-scrim: rgba(0, 0, 0, 0.65);
   --toast-bg: #e8eef4;
   --toast-fg: #0f1419;
+  --today: #93c5fd;
+  --today-fg: #0f172a;
+  --today-soft: #1e3a5f;
   color-scheme: dark;
 }
 
@@ -88,6 +94,9 @@
     --modal-scrim: rgba(0, 0, 0, 0.65);
     --toast-bg: #e8eef4;
     --toast-fg: #0f1419;
+    --today: #93c5fd;
+    --today-fg: #0f172a;
+    --today-soft: #1e3a5f;
     color-scheme: dark;
   }
 }
@@ -318,6 +327,29 @@ body {
 .day-cell.weekend { opacity: 0.95; }
 .day-cell.holiday { box-shadow: inset 0 0 0 2px var(--warn); }
 .day-cell.has-conflict { box-shadow: inset 0 0 0 2px var(--danger); }
+.day-cell.is-today {
+  background: var(--today-soft);
+  border-color: var(--today);
+  outline: 2px solid var(--today);
+  outline-offset: 1px;
+  opacity: 1;
+  position: relative;
+  z-index: 1;
+}
+.day-cell.is-today .day-num { color: var(--today); }
+.today-badge {
+  display: inline-block;
+  margin-left: 0.28rem;
+  padding: 0.05rem 0.38rem;
+  border-radius: 999px;
+  background: var(--today);
+  color: var(--today-fg);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.35;
+  vertical-align: 0.05em;
+}
 .day-cell.is-empty-day {
   align-items: stretch;
 }
@@ -730,7 +762,12 @@ body {
     --bg: #fff; --surface: #fff; --surface-2: #fff; --text: #111;
     --muted: #444; --border: #ccc; --slot-am: #e0f2fe; --slot-pm: #fce7f3;
     --slot-night: #ede9fe; --slot-day: #d1fae5; --slot-empty: #f8fafc;
+    --today: #1d4ed8; --today-fg: #ffffff; --today-soft: #dbeafe;
     color-scheme: light;
+  }
+  .day-cell.is-today {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
   .app-header, .sidebar, .no-print, .day-actions, .toolbar { display: none !important; }
   .layout { display: block; padding: 0; max-width: none; }

@@ -308,6 +308,12 @@
     return (new Date(y, m - 1, d).getDay() + 6) % 7;
   }
 
+  /** True only for today's civil date in the browser's local timezone. */
+  function isLocalToday(y, m, d) {
+    const now = new Date();
+    return now.getFullYear() === y && now.getMonth() + 1 === m && now.getDate() === d;
+  }
+
   function toMinutes(hhmm) {
     const [h, m] = String(hhmm).split(":").map(Number);
     return h * 60 + m;
@@ -1296,16 +1302,22 @@
       const hol = (sched.holidays || []).find((h) => h.day === d);
       const away = [];
       vacationMap.forEach((set, name) => { if (set.has(d)) away.push(name); });
+      const viewingToday = isLocalToday(state.year, state.month, d);
       if (hol) cell.classList.add("holiday");
       if (conf.size || slots.some((s) => personOnVacation(s.person, d))) cell.classList.add("has-conflict");
       if (!slots.length) cell.classList.add("is-empty-day");
+      if (viewingToday) {
+        cell.classList.add("is-today");
+        cell.setAttribute("aria-current", "date");
+      }
 
       const num = document.createElement("div");
       num.className = "day-num";
       const flags = [];
       if (hol) flags.push(`<span class="day-flag" title="${escapeHtml(hol.label)}">${escapeHtml(hol.label)}</span>`);
       if (away.length) flags.push(`<span class="day-flag" title="Puhkus: ${escapeHtml(away.join(", "))}">Puhkus</span>`);
-      num.innerHTML = `<span><span class="day-wd">${window.WEEKDAY_FULL_ET[wd]}</span>${d}</span>${flags.join("")}`;
+      const todayMark = viewingToday ? `<span class="today-badge">Täna</span>` : "";
+      num.innerHTML = `<span><span class="day-wd">${window.WEEKDAY_FULL_ET[wd]}</span>${d}${todayMark}</span>${flags.join("")}`;
       cell.appendChild(num);
 
       if (!slots.length) {
