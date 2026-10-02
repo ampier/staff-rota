@@ -333,7 +333,12 @@
     const e = toMinutes(prevSlot.end);
     if (Number.isNaN(s) || Number.isNaN(e) || e > s) return false;
     const tail = e === s ? [[0, 1440]] : [[0, e]];
-    return intervalsOverlap(tail, rangeIntervals(nextSlot.start, nextSlot.end));
+    const ns = toMinutes(nextSlot.start);
+    const ne = toMinutes(nextSlot.end);
+    if (Number.isNaN(ns) || Number.isNaN(ne)) return false;
+    // Overnight nextSlot's morning half is the following day; compare only this calendar day.
+    const onNextDay = ne <= ns ? [[ns, 1440]] : [[ns, ne]];
+    return intervalsOverlap(tail, onNextDay);
   }
 
   /** True if inner range is fully inside outer range (overnight-aware). */
