@@ -36,13 +36,13 @@ open http://127.0.0.1:8765/
   - **Nädalapäevade muster** — copy the previous month’s weekday assignments (cycles if the new month has more of that weekday)
   - **Õiglane rotatsioon** — fills those slots evenly, skips availability-rule breaks and vacations written in the dialog (e.g. `RENE 1-7`); overlaps, rule breaks, and vacation clashes stay highlighted
 - **Meeskonnad** — switch, add, rename, or delete a team; each team has its own people, notes, and months. Vastuvõtt starts from the October 2026 seed
-- **People** — add/remove, filter, availability rules (presets + custom windows, overnight-aware)
+- **People** — add/remove, filter, availability rules (presets + custom windows, overnight-aware). Each name shows hours on the open month; a shift that crosses midnight (20–08) counts as 12 h, and empty or N/A slots count as nothing
 - **Edit** — click slot (Esc / Ctrl⌘Enter); empty vs **N/A**; templates; copy/paste day; duplicate to next day; copy week → next week
 - **Conflicts** — same person overlapping times highlighted; free / busy / conflict pills
 - **Import** — paste `pdftotext` or upload `.txt`; seed October 2026
 - **Kalender (.ics)** — no accounts or OAuth. **Kuu ICS** downloads the open month (everyone, or only people checked in the sidebar). Each person has **Minu graafik**. **Impordi ICS** pastes or uploads a file, matches people by name, and adds or fills shifts; unknown names and clashes are listed and skipped
 - **Export** — JSON, CSV, A4-friendly printable HTML (always light)
-- **Dark mode** — system preference by default; toolbar cycles system → light → dark (persisted)
+- **Dark mode** — system preference by default; toolbar cycles system → light → dark (persisted). Dark backgrounds are a soft slate, lighter than near-black, with the same text and accent colours
 - **Persist** — `localStorage` (`staff-rota-v2`; older saves become the Vastuvõtt team)
 
 ## Seed data

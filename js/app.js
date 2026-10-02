@@ -444,20 +444,33 @@
     return conflicts;
   }
 
+  /** Elapsed minutes, including a shift that crosses midnight (20:00–08:00 = 12 h). */
+  function slotMinutes(start, end) {
+    return rangeIntervals(start, end).reduce((sum, [a, b]) => sum + (b - a), 0);
+  }
+
+  function formatHours(minutes) {
+    const rounded = Math.round(minutes / 6) / 10;
+    const text = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1).replace(".", ",");
+    return `${text} h`;
+  }
+
   function personMonthStats(name) {
     const sched = currentSched();
     const dim = daysInMonth(state.year, state.month);
     let shifts = 0;
     let conflictDays = 0;
+    let minutes = 0;
     for (let d = 1; d <= dim; d++) {
       const slots = (sched.days[d] || []).filter((s) => s.person === name);
       if (!slots.length) continue;
       shifts += slots.length;
+      minutes += slots.reduce((sum, s) => sum + slotMinutes(s.start, s.end), 0);
       const conf = dayConflicts(d);
       const idxs = (sched.days[d] || []).map((s, i) => (s.person === name ? i : -1)).filter((i) => i >= 0);
       if (idxs.some((i) => conf.has(i))) conflictDays++;
     }
-    return { shifts, conflictDays };
+    return { shifts, conflictDays, minutes };
   }
 
   function toast(msg) {
@@ -1222,7 +1235,10 @@
         <span class="person-color" style="background:${p.color}"></span>
         <input type="checkbox" ${checked ? "checked" : ""} data-name="${escapeHtml(p.name)}" aria-label="Filtreeri ${escapeHtml(p.name)}">
         <div style="flex:1;min-width:0">
-          <div class="name">${escapeHtml(p.name)}</div>
+          <div class="name-line">
+            <span class="name">${escapeHtml(p.name)}</span>
+            <span class="person-hours" title="Tunnid sel kuul. Öövahetus (nt 20–08) läheb sisse täispikkuses.">${formatHours(stats.minutes)}</span>
+          </div>
           <div class="avail">${(p.availability || []).join(", ") || "kõik vahetused"}</div>
           <button class="btn btn-sm btn-ics" type="button" data-ics="${escapeHtml(p.name)}" title="Laadi ${escapeHtml(p.name)} kuu .ics">Minu graafik</button>
         </div>

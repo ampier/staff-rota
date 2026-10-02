@@ -34,10 +34,10 @@
 }
 
 [data-theme="dark"] {
-  --bg: #0f1419;
-  --surface: #1a222c;
-  --surface-2: #151c24;
-  --border: #2d3a47;
+  --bg: #243044;
+  --surface: #2e3e52;
+  --surface-2: #29384a;
+  --border: #4c647c;
   --text: #e8eef4;
   --muted: #9aabbc;
   --accent: #60a5fa;
@@ -53,25 +53,25 @@
   --slot-pm: #701a3c;
   --slot-night: #3b0764;
   --slot-day: #064e3b;
-  --slot-empty: #243040;
+  --slot-empty: #3a4d64;
   --shadow: 0 1px 3px rgba(0,0,0,.35);
   --shadow-lg: 0 20px 40px rgba(0,0,0,.5);
-  --header-bg: #1a222c;
+  --header-bg: #2e3e52;
   --modal-scrim: rgba(0, 0, 0, 0.65);
   --toast-bg: #e8eef4;
   --toast-fg: #0f1419;
   --today: #93c5fd;
   --today-fg: #0f172a;
-  --today-soft: #1e3a5f;
+  --today-soft: #335888;
   color-scheme: dark;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0f1419;
-    --surface: #1a222c;
-    --surface-2: #151c24;
-    --border: #2d3a47;
+    --bg: #243044;
+    --surface: #2e3e52;
+    --surface-2: #29384a;
+    --border: #4c647c;
     --text: #e8eef4;
     --muted: #9aabbc;
     --accent: #60a5fa;
@@ -87,16 +87,16 @@
     --slot-pm: #701a3c;
     --slot-night: #3b0764;
     --slot-day: #064e3b;
-    --slot-empty: #243040;
+    --slot-empty: #3a4d64;
     --shadow: 0 1px 3px rgba(0,0,0,.35);
     --shadow-lg: 0 20px 40px rgba(0,0,0,.5);
-    --header-bg: #1a222c;
+    --header-bg: #2e3e52;
     --modal-scrim: rgba(0, 0, 0, 0.65);
     --toast-bg: #e8eef4;
     --toast-fg: #0f1419;
     --today: #93c5fd;
     --today-fg: #0f172a;
-    --today-soft: #1e3a5f;
+    --today-soft: #335888;
     color-scheme: dark;
   }
 }
@@ -446,7 +446,25 @@ body {
 .person-row.overbooked { border-color: var(--danger); background: var(--danger-soft); }
 .person-row.free-today { border-color: var(--ok); }
 .person-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); }
-.person-row .name { font-weight: 600; font-size: 0.88rem; }
+.name-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem;
+}
+.person-row .name { font-weight: 600; font-size: 0.88rem; min-width: 0; }
+.person-hours {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 0.05rem 0.4rem;
+  white-space: nowrap;
+}
 .person-row .avail {
   font-size: 0.66rem;
   color: var(--muted);
