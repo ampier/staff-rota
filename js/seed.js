@@ -1,7 +1,9 @@
 // Seeded schedules (Graafik PDFs) + shared constants.
 // ROTA_SEED holds the default opening month (October 2026) and the people list;
 // ROTA_SEED.months holds every seeded month. Seed months a browser does not have
-// yet are merged into existing saved data on load (never overwriting).
+// yet are merged into existing saved data on load. A month already present is
+// replaced only when its seed `version` is higher than the one the browser got
+// (the previous copy is kept in state.seedBackups).
 window.ROTA_SEED = {
   year: 2026,
   month: 10,
@@ -20,42 +22,44 @@ window.ROTA_SEED = {
   holidays: [{ day: 17, label: "Hõimupäev" }],
   // person: string = assigned, null = N/A, "" = empty (täitmata)
   days: {
-    1:  [{ start: "08:00", end: "20:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "RENE" }, { start: "20:00", end: "08:00", person: "IRINA" }],
-    2:  [{ start: "08:00", end: "20:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "RENE" }, { start: "20:00", end: "08:00", person: "IRINA" }],
+    1:  [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "RENE" }, { start: "20:00", end: "08:00", person: "IRINA" }],
+    2:  [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "RENE" }, { start: "20:00", end: "08:00", person: "IRINA" }],
     3:  [{ start: "08:00", end: "20:00", person: "KRIS-CELIN" }, { start: "20:00", end: "08:00", person: "VIKTORIA" }],
     4:  [{ start: "08:00", end: "20:00", person: "KRIS-CELIN" }, { start: "20:00", end: "08:00", person: "VIKTORIA" }],
     5:  [{ start: "08:00", end: "14:00", person: "NETE" }, { start: "14:00", end: "20:00", person: "NICHOLAS" }, { start: "20:00", end: "08:00", person: "RENE" }],
-    6:  [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "NICHOLAS" }, { start: "20:00", end: "08:00", person: "RENE" }],
+    6:  [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "NICHOLAS" }, { start: "20:00", end: "09:30", person: "RENE" }],
     7:  [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "IRINA" }, { start: "20:00", end: "08:00", person: "KRIS-CELIN" }],
     8:  [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "IRINA" }, { start: "20:00", end: "08:00", person: "KRIS-CELIN" }],
     9:  [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "IRINA" }, { start: "20:00", end: "08:00", person: "VIKTORIA" }],
     10: [{ start: "08:00", end: "20:00", person: "NICHOLAS" }, { start: "20:00", end: "08:00", person: "VIKTORIA" }],
     11: [{ start: "08:00", end: "20:00", person: "NICHOLAS" }, { start: "20:00", end: "08:00", person: "RENE" }],
     12: [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "KRIS-CELIN" }, { start: "20:00", end: "08:00", person: "RENE" }],
-    13: [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "KRIS-CELIN" }, { start: "20:00", end: "08:00", person: "IRINA" }],
-    14: [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "KRIS-CELIN" }, { start: "20:00", end: "08:00", person: "IRINA" }],
+    13: [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "KRIS-CELIN" }, { start: "14:00", end: "20:00", person: "LYDIA" }, { start: "20:00", end: "08:00", person: "IRINA" }],
+    14: [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "LYDIA" }, { start: "20:00", end: "08:00", person: "IRINA" }],
     15: [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "VIKTORIA" }, { start: "20:00", end: "08:00", person: "RENE" }],
     16: [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "VIKTORIA" }, { start: "20:00", end: "08:00", person: "RENE" }],
     17: [{ start: "08:00", end: "20:00", person: "KRIS-CELIN" }, { start: "20:00", end: "08:00", person: "IRINA" }],
     18: [{ start: "08:00", end: "20:00", person: "KRIS-CELIN" }, { start: "20:00", end: "08:00", person: "IRINA" }],
-    19: [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "RENE" }, { start: "20:00", end: "08:00", person: "VIKTORIA" }],
-    20: [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "RENE" }, { start: "20:00", end: "08:00", person: "VIKTORIA" }],
-    21: [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "RENE" }, { start: "20:00", end: "08:00", person: null }],
-    22: [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "KRIS-CELIN" }, { start: "20:00", end: "08:00", person: null }],
+    19: [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "RENE" }, { start: "20:00", end: "08:00", person: "LYDIA" }],
+    20: [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "RENE" }, { start: "20:00", end: "08:00", person: "LYDIA" }],
+    21: [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "RENE" }, { start: "20:00", end: "08:00", person: "VIKTORIA" }],
+    22: [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "KRIS-CELIN" }, { start: "20:00", end: "08:00", person: "VIKTORIA" }],
     23: [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "KRIS-CELIN" }, { start: "20:00", end: "08:00", person: "IRINA" }],
-    24: [{ start: "08:00", end: "20:00", person: "VIKTORIA" }, { start: "20:00", end: "08:00", person: "IRINA" }],
-    25: [{ start: "08:00", end: "20:00", person: "VIKTORIA" }, { start: "20:00", end: "08:00", person: "RENE" }],
-    26: [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: null }, { start: "20:00", end: "08:00", person: "RENE" }],
-    27: [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: null }, { start: "20:00", end: "08:00", person: "KRIS-CELIN" }],
-    28: [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "IRINA" }, { start: "20:00", end: "08:00", person: "KRIS-CELIN" }],
-    29: [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "IRINA" }, { start: "20:00", end: "08:00", person: "VIKTORIA" }],
-    30: [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "IRINA" }, { start: "20:00", end: "08:00", person: "VIKTORIA" }],
-    31: [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "RENE" }, { start: "20:00", end: "08:00", person: null }],
+    24: [{ start: "08:00", end: "20:00", person: "LYDIA" }, { start: "20:00", end: "08:00", person: "IRINA" }],
+    25: [{ start: "08:00", end: "20:00", person: "LYDIA" }, { start: "20:00", end: "08:00", person: "KRIS-CELIN" }],
+    26: [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "VIKTORIA" }, { start: "20:00", end: "08:00", person: "RENE" }],
+    27: [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "VIKTORIA" }, { start: "20:00", end: "08:00", person: "KRIS-CELIN" }],
+    28: [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "IRINA" }, { start: "20:00", end: "08:00", person: "RENE" }],
+    29: [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "IRINA" }, { start: "20:00", end: "08:00", person: "LYDIA" }],
+    30: [{ start: "08:00", end: "14:00", person: "GAREN" }, { start: "14:00", end: "20:00", person: "IRINA" }, { start: "20:00", end: "08:00", person: "LYDIA" }],
+    31: [{ start: "08:00", end: "20:00", person: "RENE" }, { start: "20:00", end: "08:00", person: "VIKTORIA" }],
   },
 };
 
 window.ROTA_SEED.months = {
   "2026-10": {
+    // Bump version to push a changed month to browsers that already have it.
+    version: 2,
     year: 2026,
     month: 10,
     notes: window.ROTA_SEED.notes,
@@ -63,6 +67,7 @@ window.ROTA_SEED.months = {
     days: window.ROTA_SEED.days,
   },
   "2026-11": {
+    version: 1,
     year: 2026,
     month: 11,
     // 30.11 IRINA 12:00-20:00 kept as written in the source graafik.

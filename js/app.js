@@ -228,21 +228,32 @@
     };
   }
 
-  /** Add seed months (and seed people) an existing save does not have yet. Never overwrites. */
+  /** Merge seed months into saved data. New months are added; a month the browser
+   *  already has is replaced only when its seed version increased. */
   function mergeSeedMonths() {
     const s = window.ROTA_SEED;
     const t = state.teams && state.teams.vastuvott;
     if (!s || !t) return false;
-    if (!Array.isArray(state.seededMonths)) {
-      // Older saves only ever received the October seed.
-      state.seededMonths = [monthKey(s.year, s.month)];
+    if (Array.isArray(state.seededMonths)) {
+      const o = {};
+      state.seededMonths.forEach((k) => { o[k] = 1; });
+      state.seededMonths = o;
+    } else if (!state.seededMonths || typeof state.seededMonths !== "object") {
+      // Older saves only ever received the original (version 1) October seed.
+      state.seededMonths = { [monthKey(s.year, s.month)]: 1 };
     }
     let changed = false;
     for (const [k, m] of Object.entries(seedMonths())) {
-      if (state.seededMonths.includes(k)) continue;
-      state.seededMonths.push(k);
+      const ver = m.version || 1;
+      const had = state.seededMonths[k];
+      if (had && had >= ver) continue;
+      state.seededMonths[k] = ver;
       changed = true;
-      if (t.schedules[k]) continue; // user already has this month: keep theirs
+      if (t.schedules[k]) {
+        if (!had) continue; // user made this month themselves: keep theirs
+        if (!state.seedBackups) state.seedBackups = {};
+        state.seedBackups[`${k}@v${had}`] = t.schedules[k];
+      }
       t.schedules[k] = seedMonthSchedule(m);
       for (const slots of Object.values(m.days || {})) {
         for (const sl of slots) {
@@ -284,7 +295,7 @@
       year: s.year,
       month: s.month,
       activeTeamId: "vastuvott",
-      seededMonths: Object.keys(schedules),
+      seededMonths: Object.fromEntries(Object.entries(seedMonths()).map(([k, m]) => [k, m.version || 1])),
       teams: {
         vastuvott: { id: "vastuvott", name: "Vastuvõtt", people, schedules },
       },
