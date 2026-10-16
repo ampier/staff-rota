@@ -163,12 +163,14 @@
           seedFromDefault();
           return;
         }
+        mergeSeedMonths();
         saveState();
         return;
       }
       const raw1 = localStorage.getItem(STORAGE_KEY_V1);
       if (raw1) {
         state = ensureTeams(migrateV1(raw1));
+        mergeSeedMonths();
         saveState();
         return;
       }
@@ -213,6 +215,52 @@
     } catch (_) {}
   }
 
+  function seedMonths() {
+    const s = window.ROTA_SEED;
+    return (s && s.months) || {};
+  }
+
+  function seedMonthSchedule(m) {
+    return {
+      days: normalizeDays(JSON.parse(JSON.stringify(m.days || {}))),
+      notes: m.notes || "",
+      holidays: (m.holidays || []).map((h) => ({ ...h })),
+    };
+  }
+
+  /** Add seed months (and seed people) an existing save does not have yet. Never overwrites. */
+  function mergeSeedMonths() {
+    const s = window.ROTA_SEED;
+    const t = state.teams && state.teams.vastuvott;
+    if (!s || !t) return false;
+    if (!Array.isArray(state.seededMonths)) {
+      // Older saves only ever received the October seed.
+      state.seededMonths = [monthKey(s.year, s.month)];
+    }
+    let changed = false;
+    for (const [k, m] of Object.entries(seedMonths())) {
+      if (state.seededMonths.includes(k)) continue;
+      state.seededMonths.push(k);
+      changed = true;
+      if (t.schedules[k]) continue; // user already has this month: keep theirs
+      t.schedules[k] = seedMonthSchedule(m);
+      for (const slots of Object.values(m.days || {})) {
+        for (const sl of slots) {
+          if (!sl.person) continue;
+          if (t.people.some((p) => p.name === sl.person)) continue;
+          const sp = s.people.find((p) => p.name === sl.person);
+          t.people.push({
+            id: sp ? sp.id : sl.person.toLowerCase(),
+            name: sl.person,
+            availability: sp ? [...sp.availability] : [],
+            color: COLORS[t.people.length % COLORS.length],
+          });
+        }
+      }
+    }
+    return changed;
+  }
+
   function seedFromDefault() {
     const s = window.ROTA_SEED;
     const key = monthKey(s.year, s.month);
@@ -222,18 +270,21 @@
       availability: [...p.availability],
       color: COLORS[i % COLORS.length],
     }));
-    const schedules = {
-      [key]: {
+    const schedules = {};
+    for (const [k, m] of Object.entries(seedMonths())) schedules[k] = seedMonthSchedule(m);
+    if (!schedules[key]) {
+      schedules[key] = {
         days: normalizeDays(JSON.parse(JSON.stringify(s.days))),
         notes: s.notes,
         holidays: [...s.holidays],
-      },
-    };
+      };
+    }
     state = {
       version: 3,
       year: s.year,
       month: s.month,
       activeTeamId: "vastuvott",
+      seededMonths: Object.keys(schedules),
       teams: {
         vastuvott: { id: "vastuvott", name: "Vastuvõtt", people, schedules },
       },

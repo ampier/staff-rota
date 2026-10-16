@@ -52,6 +52,8 @@ From `docs/graafik-oktoober-2026.pdf` via `pdftotext`.
 People: GAREN, RENE, IRINA, KRIS-CELIN, VIKTORIA, NETE, NICHOLAS.  
 Lipupäev: 17.10 — Hõimupäev.
 
+November 2026 is also seeded (`ROTA_SEED.months` in `js/seed.js`), adding LYDIA and KÜLLIKI; notes: Koosolek 03.11 kell 09:00, Puhkused GAREN 2-15. Browsers with saved data get any seed month they have not received yet merged in on load (tracked in `seededMonths`); months they already have are never overwritten.
+
 ## Deploy (free static host)
 
 Paths are relative; include `.nojekyll` for GitHub Pages.
