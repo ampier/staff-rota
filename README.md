@@ -54,6 +54,8 @@ Lipupäev: 17.10 — Hõimupäev.
 
 November 2026 is also seeded (`ROTA_SEED.months` in `js/seed.js`), adding LYDIA and KÜLLIKI; notes: Koosolek 03.11 kell 09:00, Puhkused GAREN 2-15. Browsers with saved data get any seed month they have not received yet merged in on load (tracked in `seededMonths`); a month they already have is replaced only when its seed `version` increases (old copy kept in `seedBackups`). October 2026 is at version 2.
 
+People can have `activeUntil` (`YYYY-MM-DD`): after that month they are hidden from the people panel, filters, hours and shift picker, and never used by **Loo järgmine kuu** (pattern copies leave their slot empty). Past months keep their shifts. NICHOLAS is active until 2026-10-31. Seed person changes reach existing browsers via `ROTA_SEED.peopleVersion`.
+
 ## Deploy (free static host)
 
 Paths are relative; include `.nojekyll` for GitHub Pages.

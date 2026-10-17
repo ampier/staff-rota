@@ -56,6 +56,21 @@
     return `${y}-${String(m).padStart(2, "0")}`;
   }
 
+  /** A person with activeUntil ("YYYY-MM-DD") is gone from months after that date's month. */
+  function isActiveIn(p, y, m) {
+    if (!p || !p.activeUntil) return true;
+    return monthKey(y, m) <= String(p.activeUntil).slice(0, 7);
+  }
+
+  function peopleIn(y, m) {
+    return team().people.filter((p) => isActiveIn(p, y, m));
+  }
+
+  /** People shown for the open month. */
+  function monthPeople() {
+    return peopleIn(state.year, state.month);
+  }
+
   function parseMonthKey(key) {
     const [y, m] = key.split("-").map(Number);
     return { year: y, month: m };
@@ -243,6 +258,18 @@
       state.seededMonths = { [monthKey(s.year, s.month)]: 1 };
     }
     let changed = false;
+    const pv = s.peopleVersion || 1;
+    if ((state.seedPeopleVersion || 1) < pv) {
+      // Only seed-managed fields (activeUntil) are updated; nothing else is touched.
+      for (const sp of s.people) {
+        const p = t.people.find((x) => x.name === sp.name);
+        if (!p) continue;
+        if (sp.activeUntil) p.activeUntil = sp.activeUntil;
+        else delete p.activeUntil;
+      }
+      state.seedPeopleVersion = pv;
+      changed = true;
+    }
     for (const [k, m] of Object.entries(seedMonths())) {
       const ver = m.version || 1;
       const had = state.seededMonths[k];
@@ -264,6 +291,7 @@
             id: sp ? sp.id : sl.person.toLowerCase(),
             name: sl.person,
             availability: sp ? [...sp.availability] : [],
+            ...(sp && sp.activeUntil ? { activeUntil: sp.activeUntil } : {}),
             color: COLORS[t.people.length % COLORS.length],
           });
         }
@@ -279,6 +307,7 @@
       id: p.id,
       name: p.name,
       availability: [...p.availability],
+      ...(p.activeUntil ? { activeUntil: p.activeUntil } : {}),
       color: COLORS[i % COLORS.length],
     }));
     const schedules = {};
@@ -295,6 +324,7 @@
       year: s.year,
       month: s.month,
       activeTeamId: "vastuvott",
+      seedPeopleVersion: s.peopleVersion || 1,
       seededMonths: Object.fromEntries(Object.entries(seedMonths()).map(([k, m]) => [k, m.version || 1])),
       teams: {
         vastuvott: { id: "vastuvott", name: "Vastuvõtt", people, schedules },
@@ -828,7 +858,8 @@
     const days = {};
     const loadMin = {};
     const loadN = {};
-    team().people.forEach((p) => {
+    const activePool = peopleIn(year, month);
+    activePool.forEach((p) => {
       loadMin[p.name] = 0;
       loadN[p.name] = 0;
     });
@@ -844,7 +875,7 @@
       const prevSlots = d > 1 ? days[d - 1] : null;
       for (const slot of skeleton) {
         const tiers = { best: [], second: [], conflict: [], violation: [] };
-        for (const p of team().people) {
+        for (const p of activePool) {
           if (onVac(p.name, d)) continue;
           const availOk = checkAvailability(p.name, slot.start, slot.end).ok;
           const overlap =
@@ -890,7 +921,10 @@
         const wd = weekdayMon0(dstYear, dstMonth, d);
         const list = lists[wd];
         if (!list.length) continue;
-        days[d] = cloneSlots(list[seen[wd] % list.length]);
+        // People no longer active in the new month leave their slot empty.
+        days[d] = cloneSlots(list[seen[wd] % list.length]).map((s) =>
+          s.person && !isActiveIn(personByName(s.person), dstYear, dstMonth) ? { ...s, person: "" } : s
+        );
         seen[wd]++;
       }
       return days;
@@ -1280,11 +1314,12 @@
   function renderPeople() {
     const list = document.getElementById("people-list");
     list.innerHTML = "";
-    if (!team().people.length) {
+    const shown = monthPeople();
+    if (!shown.length) {
       list.innerHTML = `<div class="empty-day-hint">Inimesi pole. Lisa esimene töötaja allpool.</div>`;
       return;
     }
-    team().people.forEach((p) => {
+    shown.forEach((p) => {
       const stats = personMonthStats(p.name);
       const row = document.createElement("div");
       let statusClass = "free";
@@ -1369,7 +1404,9 @@
       cal.appendChild(empty);
     }
 
-    const filterActive = selectedPeople.size > 0 && selectedPeople.size < team().people.length;
+    const mp = monthPeople();
+    const selShown = mp.filter((p) => selectedPeople.has(p.name)).length;
+    const filterActive = selShown > 0 && selShown < mp.length;
 
     for (let d = 1; d <= dim; d++) {
       const cell = document.createElement("div");
@@ -1504,6 +1541,7 @@
     const sched = currentSched();
     const slot = sched.days[day][idx];
     const options = team().people
+      .filter((p) => isActiveIn(p, state.year, state.month) || slot.person === p.name)
       .map((p) => `<option value="${escapeHtml(p.name)}" ${slot.person === p.name ? "selected" : ""}>${escapeHtml(p.name)}</option>`)
       .join("");
 
@@ -1908,7 +1946,7 @@
       toast("Vali vähemalt üks inimene");
       return;
     }
-    const everyone = team().people.length > 0 && team().people.every((p) => selectedPeople.has(p.name));
+    const everyone = monthPeople().length > 0 && monthPeople().every((p) => selectedPeople.has(p.name));
     const events = collectMonthShifts(everyone ? null : selectedPeople);
     if (!events.length) {
       toast("Valitud inimestel pole vahetusi");

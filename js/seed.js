@@ -7,6 +7,8 @@
 window.ROTA_SEED = {
   year: 2026,
   month: 10,
+  // Bump when a seed person field (activeUntil) changes; existing saves pick it up.
+  peopleVersion: 2,
   people: [
     { id: "garen", name: "GAREN", availability: ["08:00-14:00", "08:00-20:00"] },
     { id: "rene", name: "RENE", availability: ["14:00-20:00", "20:00-08:00"] },
@@ -14,7 +16,7 @@ window.ROTA_SEED = {
     { id: "kris-celin", name: "KRIS-CELIN", availability: ["08:00-20:00", "14:00-20:00", "20:00-08:00"] },
     { id: "viktoria", name: "VIKTORIA", availability: ["08:00-20:00", "14:00-20:00", "20:00-08:00"] },
     { id: "nete", name: "NETE", availability: ["08:00-14:00"] },
-    { id: "nicholas", name: "NICHOLAS", availability: ["08:00-14:00", "08:00-20:00", "14:00-20:00"] },
+    { id: "nicholas", name: "NICHOLAS", availability: ["08:00-14:00", "08:00-20:00", "14:00-20:00"], activeUntil: "2026-10-31" }, // left; October kept as history
     { id: "lydia", name: "LYDIA", availability: [] },
     { id: "kulliki", name: "KÜLLIKI", availability: [] },
   ],
