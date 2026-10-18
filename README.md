@@ -41,7 +41,7 @@ open http://127.0.0.1:8765/
 - **Conflicts** — same person overlapping times highlighted; free / busy / conflict pills
 - **Import** — paste `pdftotext` or upload `.txt`; seed October 2026
 - **Kalender (.ics)** — no accounts or OAuth. **Kuu ICS** downloads the open month (everyone, or only people checked in the sidebar). Each person has **Minu graafik**. **Impordi ICS** pastes or uploads a file, matches people by name, and adds or fills shifts; unknown names and clashes are listed and skipped
-- **Export** — JSON, CSV, and print (always light, including in dark mode). Print is an A4 list of the open month. With exactly one person checked in the people filter, print is an A4 landscape month calendar of that person’s shifts only: times, a colour per shift type, holidays, and Puhkused, plus the month’s shift count and hours. Any other filter keeps the list.
+- **Export** — JSON, CSV, and print (always light, including in dark mode). Print is an A4 list of the open month. With exactly one person checked in the people filter, print is an A4 landscape month calendar of that person’s shifts only: colour pills for each shift type, holidays, and Puhkused, plus totals for shifts, hours, nights, and weekend shifts. Any other filter keeps the list.
 - **Dark mode** — system preference by default; toolbar cycles system → light → dark (persisted). Dark backgrounds are a soft slate, lighter than near-black, with the same text and accent colours
 - **Persist** — `localStorage` (`staff-rota-v2`; older saves become the Vastuvõtt team)
 
