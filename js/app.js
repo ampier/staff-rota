@@ -1505,6 +1505,21 @@
 
       cal.appendChild(cell);
     }
+    syncPrintButton();
+  }
+
+  /** People checked in the sidebar for the month on screen. */
+  function checkedMonthPeople() {
+    return monthPeople().filter((p) => selectedPeople.has(p.name));
+  }
+
+  function syncPrintButton() {
+    const btn = document.getElementById("btn-export-print");
+    if (!btn) return;
+    const picked = checkedMonthPeople();
+    btn.title = picked.length === 1
+      ? `Prindi ${picked[0].name}: kuu kalender (A4 rõhtpaigutus)`
+      : "Prindi kuu nimekiri";
   }
 
   // ---------- modals ----------
@@ -2234,7 +2249,53 @@
     downloadBlob(new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" }), `graafik-${monthKey(state.year, state.month)}.csv`);
   }
 
-  function exportPrintableHTML() {
+  function formatDayRanges(daySet) {
+    const days = [...daySet].map(Number).filter((d) => d >= 1).sort((a, b) => a - b);
+    if (!days.length) return "";
+    const ranges = [];
+    let start = days[0];
+    let prev = days[0];
+    for (let i = 1; i <= days.length; i++) {
+      if (i < days.length && days[i] === prev + 1) {
+        prev = days[i];
+        continue;
+      }
+      ranges.push(start === prev ? `${start}.` : `${start}.–${prev}.`);
+      if (i < days.length) start = prev = days[i];
+    }
+    return ranges.join(", ");
+  }
+
+  function shiftCrossesMidnight(start, end) {
+    return toMinutes(end) <= toMinutes(start);
+  }
+
+  function printIcon(kind) {
+    const svg = (body) => `<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">${body}</svg>`;
+    const icons = {
+      am: svg(`<circle cx="8" cy="8" r="2.7" fill="currentColor"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>`),
+      pm: svg(`<path fill="currentColor" d="M3.1 11.4a4.9 4.9 0 0 1 9.8 0z"/><path d="M2 12.3h12M8 2.3v1.7M4.1 4.3l1.2 1.2M11.9 4.3L10.7 5.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>`),
+      night: svg(`<path fill="currentColor" d="M9.1 1.7A5.8 5.8 0 1 0 14.4 9 4.6 4.6 0 0 1 9.1 1.7z"/>`),
+      day: svg(`<circle cx="8" cy="8" r="2.2" fill="currentColor"/><circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="1.35"/>`),
+      custom: svg(`<circle cx="8" cy="8" r="5.3" fill="none" stroke="currentColor" stroke-width="1.35"/><path d="M8 4.4V8l2.3 1.5" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/>`),
+      vac: svg(`<path d="M3 8.2c.2-3 2.3-5.2 5-5.2s4.8 2.2 5 5.2" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/><path d="M2.4 8.2h11.2M8 3.2v8.6M8 11.8l2.6 2" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/>`),
+      hol: svg(`<path fill="currentColor" d="M8 1.6l1.45 3.5 3.75.35-2.85 2.5.85 3.7L8 9.85 4.8 11.65l.85-3.7L2.8 5.45l3.75-.35z"/>`),
+    };
+    return icons[kind] || icons.custom;
+  }
+
+  function openPrintDocument(html, filename) {
+    const w = window.open("", "_blank");
+    if (w) {
+      w.document.write(html);
+      w.document.close();
+    } else {
+      downloadBlob(new Blob([html], { type: "text/html" }), filename);
+      toast("Hüpikaken blokeeritud — HTML alla laaditud");
+    }
+  }
+
+  function buildTeamListPrintHTML() {
     const sched = currentSched();
     const dim = daysInMonth(state.year, state.month);
     let rows = "";
@@ -2253,12 +2314,14 @@
       </tr>`;
     }
     const title = `Rohe Hostel Graafik — ${team().name} — ${window.MONTH_NAMES_ET[state.month]} ${state.year}`;
-    const html = `<!DOCTYPE html>
+    return `<!DOCTYPE html>
 <html lang="et"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
+<meta name="color-scheme" content="light">
 <style>
   @page { size: A4; margin: 14mm; }
+  :root { color-scheme: light; }
   * { box-sizing: border-box; }
-  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color: #111; margin: 0; }
+  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color: #111; margin: 0; background: #fff; }
   h1 { font-size: 18pt; margin: 0 0 4mm; }
   .meta { color: #555; font-size: 10pt; margin-bottom: 6mm; }
   table { border-collapse: collapse; width: 100%; font-size: 9.5pt; }
@@ -2279,14 +2342,295 @@
 <div class="notes">${escapeHtml(sched.notes || "")}</div>
 <script>window.onload=function(){window.print()}<\/script>
 </body></html>`;
-    const w = window.open("", "_blank");
-    if (w) {
-      w.document.write(html);
-      w.document.close();
-    } else {
-      downloadBlob(new Blob([html], { type: "text/html" }), `graafik-${monthKey(state.year, state.month)}.html`);
-      toast("Hüpikaken blokeeritud — HTML alla laaditud");
+  }
+
+  /** A4 landscape month grid for one person. Colours are fixed light-print values. */
+  function buildPersonMonthPrintHTML(person) {
+    const sched = currentSched();
+    const name = person.name;
+    const dim = daysInMonth(state.year, state.month);
+    const pad = weekdayMon0(state.year, state.month, 1);
+    const rows = Math.ceil((pad + dim) / 7);
+    const stats = personMonthStats(name);
+    const vacSet = vacationMap.get(name);
+    const vacText = vacSet && vacSet.size ? formatDayRanges(vacSet) : "";
+    const monthName = window.MONTH_NAMES_ET[state.month];
+    let hasCustom = false;
+    let nightCount = 0;
+    let weekendCount = 0;
+
+    const wdHead = window.WEEKDAY_FULL_ET.map((label, i) =>
+      `<div class="wd${i >= 5 ? " we" : ""}">${escapeHtml(label)}</div>`
+    ).join("");
+
+    let cells = "";
+    for (let i = 0; i < pad; i++) cells += `<div class="day out"></div>`;
+    for (let d = 1; d <= dim; d++) {
+      const wd = weekdayMon0(state.year, state.month, d);
+      const hol = (sched.holidays || []).find((h) => Number(h.day) === d);
+      const onVac = personOnVacation(name, d);
+      const today = isLocalToday(state.year, state.month, d);
+      const slots = (sched.days[d] || [])
+        .filter((s) => s.person === name)
+        .sort((a, b) => toMinutes(a.start) - toMinutes(b.start));
+      slots.forEach((s) => {
+        const kind = slotKind(s.start, s.end);
+        if (kind === "custom") hasCustom = true;
+        if (kind === "night" || shiftCrossesMidnight(s.start, s.end)) nightCount++;
+        if (wd >= 5) weekendCount++;
+      });
+
+      const classes = ["day"];
+      if (wd >= 5) classes.push("we");
+      if (hol) classes.push("holiday");
+      if (onVac) classes.push("vacation");
+      if (slots.length) classes.push("busy");
+      if (today) classes.push("today");
+
+      const shiftHtml = slots.map((s) => {
+        const kind = slotKind(s.start, s.end);
+        const iconKind = shiftCrossesMidnight(s.start, s.end) ? "night" : kind;
+        return `<div class="shift ${kind}"><span class="ic">${printIcon(iconKind)}</span><span class="tx"><span class="t">${escapeHtml(s.start)}–${escapeHtml(s.end)}</span><span class="k">${escapeHtml(slotLabel(s.start, s.end))}</span></span></div>`;
+      }).join("");
+
+      const holHtml = hol
+        ? `<span class="hol">${printIcon("hol")}<span>${escapeHtml(hol.label)}</span></span>`
+        : "";
+      const vacHtml = onVac ? `<div class="vac">${printIcon("vac")}<span>Puhkus</span></div>` : "";
+
+      cells += `<div class="${classes.join(" ")}">
+        <div class="top"><span class="num">${d}</span>${holHtml}</div>
+        ${shiftHtml ? `<div class="shifts${slots.length > 2 ? " many" : ""}">${shiftHtml}</div>` : ""}
+        ${vacHtml}
+      </div>`;
     }
+    const trailing = rows * 7 - pad - dim;
+    for (let i = 0; i < trailing; i++) cells += `<div class="day out"></div>`;
+
+    const title = `${name} — ${monthName} ${state.year} — Rohe Hostel`;
+    const legend = `
+      <span class="key am"><i></i>Hommik</span>
+      <span class="key pm"><i></i>Pärastlõuna</span>
+      <span class="key night"><i></i>Öö</span>
+      <span class="key day"><i></i>Päev</span>
+      ${hasCustom ? `<span class="key custom"><i></i>Muu</span>` : ""}
+      ${vacText ? `<span class="key vac"><i></i>Puhkus</span>` : ""}
+      ${(sched.holidays || []).length ? `<span class="key hol"><i></i>Püha</span>` : ""}
+    `;
+    const hoursText = formatHours(stats.minutes);
+
+    return `<!DOCTYPE html>
+<html lang="et"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
+<meta name="color-scheme" content="light only">
+<style>
+  @page { size: A4 landscape; margin: 7mm; }
+  :root { color-scheme: light only; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: #fff; color: #1c1917;
+    font-family: Inter, "Segoe UI", system-ui, -apple-system, Roboto, "Noto Sans", "Liberation Sans", sans-serif;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  body { width: 283mm; height: 196mm; overflow: hidden; }
+  .sheet {
+    width: 283mm; height: 196mm;
+    display: flex; flex-direction: column; gap: 2.4mm;
+    background: #fff; color: #1c1917;
+  }
+  .head {
+    flex: 0 0 auto; position: relative; overflow: hidden;
+    color: #fff; border-radius: 3.2mm;
+    padding: 3.2mm 5mm 3.1mm;
+    background: linear-gradient(118deg, #0c6842 0%, #17885a 46%, #2a9a68 74%, #e7b23a 145%);
+  }
+  .head::before {
+    content: ""; position: absolute; right: -8mm; top: -16mm;
+    width: 36mm; height: 36mm; border-radius: 50%;
+    background: radial-gradient(circle at 40% 40%, rgba(255, 236, 170, 0.95), rgba(255, 196, 70, 0.28) 52%, rgba(255, 196, 70, 0) 70%);
+    pointer-events: none;
+  }
+  .brandline, .titleline { position: relative; z-index: 1; display: flex; justify-content: space-between; align-items: center; gap: 4mm; }
+  .brand {
+    display: inline-flex; align-items: center; gap: 1.4mm;
+    font-size: 8pt; font-weight: 700; letter-spacing: 0.16em;
+    text-transform: uppercase; color: rgba(255,255,255,0.92);
+  }
+  .brand svg { width: 3.6mm; height: 3.6mm; }
+  .team { font-size: 8pt; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.78); }
+  .titleline { margin-top: 0.6mm; align-items: baseline; }
+  h1 {
+    margin: 0; min-width: 0; flex: 1 1 auto;
+    font-size: 22pt; line-height: 1.05; font-weight: 700; letter-spacing: -0.035em;
+  }
+  h1 span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .month { font-size: 16pt; font-weight: 700; letter-spacing: -0.03em; white-space: nowrap; }
+  .month em { font-style: normal; font-weight: 500; opacity: 0.82; margin-left: 1mm; }
+  .vacline {
+    display: inline-flex; align-items: center; gap: 1.2mm;
+    background: #fff4e8; color: #c2560c;
+    border: 0.35mm dashed #f08a24; border-radius: 999px;
+    padding: 0.4mm 2mm 0.45mm 1.2mm;
+    font-size: 7.6pt; font-weight: 700; white-space: nowrap;
+  }
+  .vacline svg { width: 3.3mm; height: 3.3mm; }
+  .grid {
+    flex: 1 1 auto; min-height: 0;
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    grid-template-rows: auto repeat(var(--rows), minmax(0, 1fr));
+    gap: 0.28mm; background: #e6dfd4;
+    border: 0.28mm solid #e6dfd4; border-radius: 2.4mm; overflow: hidden;
+  }
+  .wd {
+    display: flex; align-items: center; justify-content: center;
+    background: #f6f3ee; color: #8a847c;
+    font-size: 6.5pt; font-weight: 700; letter-spacing: 0.13em;
+    text-transform: uppercase; padding: 1.15mm 0.4mm; line-height: 1;
+  }
+  .wd.we { color: #c46b4a; background: #fbf6f1; }
+  .day {
+    min-width: 0; min-height: 0; overflow: hidden;
+    display: flex; flex-direction: column;
+    background: #fff; padding: 1.15mm 1.35mm 1mm;
+  }
+  .day.we { background: #fffcf8; }
+  .day.out { background: #f4f1ec; }
+  .day.holiday { background: #fffaf0; }
+  .day.vacation { background: #fff6ee; }
+  .day.vacation.we, .day.holiday.vacation { background: #fff4e8; }
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 1mm; min-width: 0; }
+  .num {
+    font-size: 10.5pt; font-weight: 700; line-height: 1; color: #1c1917;
+    font-variant-numeric: tabular-nums;
+  }
+  .day.we .num { color: #a1624a; }
+  .day.today .num {
+    background: #0e6b43; color: #fff; border-radius: 50%;
+    width: 5.6mm; height: 5.6mm;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 8.5pt;
+  }
+  .hol {
+    display: inline-flex; align-items: center; gap: 0.6mm; max-width: 72%;
+    color: #9a6708; background: #fde9a8; border-radius: 999px;
+    padding: 0.25mm 1.3mm 0.25mm 0.7mm;
+    font-size: 6.1pt; font-weight: 700; line-height: 1.15;
+  }
+  .hol svg { width: 2.6mm; height: 2.6mm; flex: none; }
+  .hol span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .shifts { display: flex; flex-direction: column; gap: 0.7mm; margin-top: 1mm; min-height: 0; }
+  .shift {
+    display: flex; align-items: center; gap: 1.4mm; min-width: 0;
+    border-radius: 1.8mm; padding: 0.9mm 1.5mm 0.95mm 1.3mm;
+  }
+  .shift .ic { display: flex; flex: none; }
+  .shift svg { width: 3.8mm; height: 3.8mm; display: block; }
+  .tx { display: flex; flex-direction: column; min-width: 0; }
+  .t {
+    font-size: 8.7pt; font-weight: 700; line-height: 1.05; letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  .k { font-size: 6.2pt; font-weight: 600; line-height: 1.15; margin-top: 0.15mm; letter-spacing: 0.01em; }
+  .shift.am { background: #ffe08a; color: #6a4808; }
+  .shift.pm { background: #ffc7b8; color: #8a301c; }
+  .shift.night { background: #5346d6; color: #fff; }
+  .shift.day { background: #c8f0d8; color: #0e5c38; }
+  .shift.custom { background: #f3e0c4; color: #6b4420; }
+  .shifts.many .shift { padding: 0.45mm 1.2mm; }
+  .shifts.many .t { font-size: 7.6pt; }
+  .shifts.many svg { width: 3.2mm; height: 3.2mm; }
+  .vac {
+    margin-top: 1.15mm; align-self: flex-start;
+    display: inline-flex; align-items: center; gap: 0.9mm;
+    border: 0.4mm dashed #f08a24; background: #fff1e0; color: #c2560c;
+    border-radius: 999px; padding: 0.45mm 1.7mm 0.5mm 1mm;
+    font-size: 7pt; font-weight: 700;
+  }
+  .vac svg { width: 3.1mm; height: 3.1mm; flex: none; }
+  .foot {
+    flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
+    gap: 3mm; background: #f7f4ef; border: 0.28mm solid #e6dfd4; border-radius: 2.6mm;
+    padding: 1.5mm 2mm 1.5mm 2.6mm;
+  }
+  .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 1mm 2.6mm; min-width: 0; }
+  .key { display: inline-flex; align-items: center; gap: 1mm; font-size: 7pt; font-weight: 650; color: #57534e; white-space: nowrap; }
+  .key i {
+    width: 2.5mm; height: 2.5mm; border-radius: 50%; display: inline-block; flex: none;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .key.am i { background: #f0c14a; }
+  .key.pm i { background: #f08a72; }
+  .key.night i { background: #5346d6; }
+  .key.day i { background: #3daa72; }
+  .key.custom i { background: #e0b172; }
+  .key.vac i { background: #fff1e0; border: 0.35mm dashed #f08a24; box-sizing: border-box; }
+  .key.hol i { background: #f6c453; }
+  .stats { display: flex; gap: 1.6mm; flex: 0 0 auto; }
+  .badge {
+    display: flex; flex-direction: column; justify-content: center;
+    min-width: 24mm; border-radius: 1.8mm; padding: 0.9mm 2.2mm 1mm;
+  }
+  .badge b { font-size: 11pt; font-weight: 700; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .badge span {
+    margin-top: 0.35mm; font-size: 5.7pt; font-weight: 700; letter-spacing: 0.07em;
+    text-transform: uppercase; opacity: 0.78;
+  }
+  .badge.shifts { background: #d9f5e4; color: #0e5c38; }
+  .badge.hours { background: #ffe7a3; color: #6a4808; }
+  .badge.nights { background: #e4defe; color: #3c2f9e; }
+  .badge.weekends { background: #ffd9ce; color: #8a301c; }
+  .rows-6 .day { padding: 0.75mm 1.1mm 0.65mm; }
+  .rows-6 .num { font-size: 9.5pt; }
+  .rows-6 .shift { padding: 0.55mm 1.2mm 0.6mm 1.1mm; }
+  .rows-6 .t { font-size: 7.8pt; }
+  .rows-6 .k { font-size: 5.7pt; }
+  .rows-6 .shift svg { width: 3.3mm; height: 3.3mm; }
+  .rows-6 .vac { margin-top: 0.7mm; font-size: 6.4pt; padding: 0.3mm 1.4mm 0.35mm 0.8mm; }
+  .rows-6 .day.today .num { width: 5mm; height: 5mm; font-size: 8pt; }
+  @media screen {
+    html, body { background: #efeae3; height: auto; overflow: auto; width: auto; }
+    body { padding: 8mm 0 12mm; }
+    .sheet { margin: 0 auto; box-shadow: 0 12px 32px rgba(60, 40, 20, 0.14); }
+  }
+</style></head><body class="person-cal">
+<div class="sheet rows-${rows}" style="--rows:${rows}">
+  <header class="head">
+    <div class="brandline">
+      <div class="brand">${printIcon("am")} Rohe Hostel</div>
+      ${vacText ? `<div class="vacline">${printIcon("vac")}<span>Puhkus ${escapeHtml(vacText)}</span></div>` : `<span></span>`}
+      <div class="team">${escapeHtml(team().name)}</div>
+    </div>
+    <div class="titleline">
+      <h1><span>${escapeHtml(name)}</span></h1>
+      <div class="month">${escapeHtml(monthName)} <em>${state.year}</em></div>
+    </div>
+  </header>
+  <div class="grid" role="grid" aria-label="${escapeHtml(name)}, ${escapeHtml(monthName)} ${state.year}">
+    ${wdHead}
+    ${cells}
+  </div>
+  <footer class="foot">
+    <div class="legend">${legend}</div>
+    <div class="stats">
+      <div class="badge shifts"><b>${stats.shifts}</b><span>Vahetust</span></div>
+      <div class="badge hours"><b>${escapeHtml(hoursText)}</b><span>Tunde</span></div>
+      <div class="badge nights"><b>${nightCount}</b><span>Ööd</span></div>
+      <div class="badge weekends"><b>${weekendCount}</b><span>Nädalavahetus</span></div>
+    </div>
+  </footer>
+</div>
+<script>window.onload=function(){window.print()}<\/script>
+</body></html>`;
+  }
+
+  function exportPrintableHTML() {
+    refreshVacationMap();
+    const picked = checkedMonthPeople();
+    const one = picked.length === 1 ? picked[0] : null;
+    const html = one ? buildPersonMonthPrintHTML(one) : buildTeamListPrintHTML();
+    const who = one ? "-" + String(one.name).replace(/[^\p{L}\p{N}-]+/gu, "-") : "";
+    openPrintDocument(html, `graafik-${monthKey(state.year, state.month)}${who}.html`);
   }
 
   function downloadBlob(blob, name) {
