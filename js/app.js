@@ -1505,6 +1505,21 @@
 
       cal.appendChild(cell);
     }
+    syncPrintButton();
+  }
+
+  /** People checked in the sidebar for the month on screen. */
+  function checkedMonthPeople() {
+    return monthPeople().filter((p) => selectedPeople.has(p.name));
+  }
+
+  function syncPrintButton() {
+    const btn = document.getElementById("btn-export-print");
+    if (!btn) return;
+    const picked = checkedMonthPeople();
+    btn.title = picked.length === 1
+      ? `Prindi ${picked[0].name}: kuu kalender (A4 rõhtpaigutus)`
+      : "Prindi kuu nimekiri";
   }
 
   // ---------- modals ----------
@@ -2234,7 +2249,48 @@
     downloadBlob(new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" }), `graafik-${monthKey(state.year, state.month)}.csv`);
   }
 
-  function exportPrintableHTML() {
+  function formatDayRanges(daySet) {
+    const days = [...daySet].map(Number).filter((d) => d >= 1).sort((a, b) => a - b);
+    if (!days.length) return "";
+    const ranges = [];
+    let start = days[0];
+    let prev = days[0];
+    for (let i = 1; i <= days.length; i++) {
+      if (i < days.length && days[i] === prev + 1) {
+        prev = days[i];
+        continue;
+      }
+      ranges.push(start === prev ? `${start}.` : `${start}.–${prev}.`);
+      if (i < days.length) start = prev = days[i];
+    }
+    return ranges.join(", ");
+  }
+
+  /** Slots on the previous calendar day, including the last day of the previous month. */
+  function slotsOnPreviousDay(day) {
+    if (day > 1) return currentSched().days[day - 1] || [];
+    const prev = shiftMonth(state.year, state.month, -1);
+    const sched = team().schedules[monthKey(prev.year, prev.month)];
+    if (!sched) return [];
+    return sched.days[daysInMonth(prev.year, prev.month)] || [];
+  }
+
+  function shiftCrossesMidnight(start, end) {
+    return toMinutes(end) <= toMinutes(start);
+  }
+
+  function openPrintDocument(html, filename) {
+    const w = window.open("", "_blank");
+    if (w) {
+      w.document.write(html);
+      w.document.close();
+    } else {
+      downloadBlob(new Blob([html], { type: "text/html" }), filename);
+      toast("Hüpikaken blokeeritud — HTML alla laaditud");
+    }
+  }
+
+  function buildTeamListPrintHTML() {
     const sched = currentSched();
     const dim = daysInMonth(state.year, state.month);
     let rows = "";
@@ -2253,12 +2309,14 @@
       </tr>`;
     }
     const title = `Rohe Hostel Graafik — ${team().name} — ${window.MONTH_NAMES_ET[state.month]} ${state.year}`;
-    const html = `<!DOCTYPE html>
+    return `<!DOCTYPE html>
 <html lang="et"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
+<meta name="color-scheme" content="light">
 <style>
   @page { size: A4; margin: 14mm; }
+  :root { color-scheme: light; }
   * { box-sizing: border-box; }
-  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color: #111; margin: 0; }
+  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color: #111; margin: 0; background: #fff; }
   h1 { font-size: 18pt; margin: 0 0 4mm; }
   .meta { color: #555; font-size: 10pt; margin-bottom: 6mm; }
   table { border-collapse: collapse; width: 100%; font-size: 9.5pt; }
@@ -2279,14 +2337,301 @@
 <div class="notes">${escapeHtml(sched.notes || "")}</div>
 <script>window.onload=function(){window.print()}<\/script>
 </body></html>`;
-    const w = window.open("", "_blank");
-    if (w) {
-      w.document.write(html);
-      w.document.close();
-    } else {
-      downloadBlob(new Blob([html], { type: "text/html" }), `graafik-${monthKey(state.year, state.month)}.html`);
-      toast("Hüpikaken blokeeritud — HTML alla laaditud");
+  }
+
+  /** A4 landscape month grid for one person. Colours are fixed light values. */
+  function buildPersonMonthPrintHTML(person) {
+    const sched = currentSched();
+    const name = person.name;
+    const dim = daysInMonth(state.year, state.month);
+    const pad = weekdayMon0(state.year, state.month, 1);
+    const rows = Math.ceil((pad + dim) / 7);
+    const stats = personMonthStats(name);
+    const vacSet = vacationMap.get(name);
+    const vacText = vacSet && vacSet.size ? formatDayRanges(vacSet) : "";
+    const monthName = window.MONTH_NAMES_ET[state.month];
+    const color = /^#[0-9a-fA-F]{3,8}$/.test(person.color || "") ? person.color : "#14532d";
+    let hasCustom = false;
+
+    const wdHead = window.WEEKDAY_FULL_ET.map((label, i) =>
+      `<div class="wd${i >= 5 ? " we" : ""}">${escapeHtml(label)}</div>`
+    ).join("");
+
+    let cells = "";
+    for (let i = 0; i < pad; i++) cells += `<div class="day out"></div>`;
+    for (let d = 1; d <= dim; d++) {
+      const wd = weekdayMon0(state.year, state.month, d);
+      const hol = (sched.holidays || []).find((h) => Number(h.day) === d);
+      const onVac = personOnVacation(name, d);
+      const slots = (sched.days[d] || [])
+        .filter((s) => s.person === name)
+        .sort((a, b) => toMinutes(a.start) - toMinutes(b.start));
+      const carries = (slotsOnPreviousDay(d) || [])
+        .filter((s) => s.person === name && shiftCrossesMidnight(s.start, s.end));
+      if (slots.some((s) => slotKind(s.start, s.end) === "custom")) hasCustom = true;
+
+      const classes = ["day"];
+      if (wd >= 5) classes.push("we");
+      if (hol) classes.push("holiday");
+      if (onVac) classes.push("vacation");
+      if (slots.length || carries.length) classes.push("busy");
+
+      const carryHtml = carries.map((s) => {
+        const kind = slotKind(s.start, s.end);
+        return `<div class="carry ${kind}">← ${escapeHtml(slotLabel(s.start, s.end))} kuni ${escapeHtml(s.end)}</div>`;
+      }).join("");
+
+      const shiftHtml = slots.map((s) => {
+        const kind = slotKind(s.start, s.end);
+        const over = shiftCrossesMidnight(s.start, s.end);
+        return `<div class="shift ${kind}"><span class="k">${escapeHtml(slotLabel(s.start, s.end))}${over ? " · üle kesköö" : ""}</span><span class="t">${escapeHtml(s.start)}–${escapeHtml(s.end)}</span></div>`;
+      }).join("");
+
+      const holHtml = hol
+        ? `<span class="hol">${escapeHtml(hol.label)}</span>`
+        : "";
+      const vacHtml = onVac ? `<div class="vac">Puhkus</div>` : "";
+
+      cells += `<div class="${classes.join(" ")}">
+        <div class="top"><span class="num">${d}</span>${holHtml}</div>
+        ${carryHtml}
+        ${shiftHtml ? `<div class="shifts${slots.length > 2 ? " many" : ""}">${shiftHtml}</div>` : ""}
+        ${vacHtml}
+      </div>`;
     }
+    const trailing = rows * 7 - pad - dim;
+    for (let i = 0; i < trailing; i++) cells += `<div class="day out"></div>`;
+
+    const title = `${name} — ${monthName} ${state.year} — Rohe Hostel`;
+    const legend = `
+      <span class="key am"><i></i>Hommik 08–14</span>
+      <span class="key pm"><i></i>Pärastlõuna 14–20</span>
+      <span class="key night"><i></i>Öö 20–08</span>
+      <span class="key day"><i></i>Päev 08–20</span>
+      ${hasCustom ? `<span class="key custom"><i></i>Muu aeg</span>` : ""}
+      <span class="key vac"><i></i>Puhkus</span>
+      ${(sched.holidays || []).length ? `<span class="key hol"><i></i>Püha</span>` : ""}
+    `;
+
+    return `<!DOCTYPE html>
+<html lang="et"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
+<meta name="color-scheme" content="light only">
+<style>
+  @page { size: A4 landscape; margin: 7mm; }
+  :root { color-scheme: light only; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: #fff; color: #111827;
+    font-family: Inter, "Segoe UI", system-ui, -apple-system, Roboto, "Noto Sans", "Liberation Sans", sans-serif;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  body { width: 283mm; height: 196mm; overflow: hidden; }
+  .sheet {
+    width: 283mm; height: 196mm;
+    display: flex; flex-direction: column; gap: 2mm;
+    background: #fff; color: #111827;
+  }
+  .head { flex: 0 0 auto; border-bottom: 0.55mm solid #14532d; padding-bottom: 1.5mm; }
+  .brandline, .titleline { display: flex; justify-content: space-between; align-items: baseline; gap: 4mm; }
+  .brand {
+    font-size: 8.5pt; font-weight: 800; letter-spacing: 0.16em;
+    text-transform: uppercase; color: #14532d;
+  }
+  .team {
+    font-size: 8pt; font-weight: 700; letter-spacing: 0.06em;
+    text-transform: uppercase; color: #4b5563;
+  }
+  .titleline { margin-top: 0.7mm; align-items: center; }
+  h1 {
+    margin: 0; min-width: 0; flex: 1 1 auto;
+    display: flex; align-items: center; gap: 2.2mm;
+    font-size: 20pt; line-height: 1; font-weight: 800; letter-spacing: -0.03em;
+  }
+  h1 span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pid {
+    width: 3.3mm; height: 3.3mm; border-radius: 50%; flex: 0 0 auto;
+    border: 0.35mm solid #111827;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .month { font-size: 16pt; font-weight: 750; letter-spacing: -0.02em; white-space: nowrap; }
+  .vacline { margin-top: 0.9mm; font-size: 9pt; font-weight: 800; color: #9a3412; letter-spacing: 0.01em; }
+  .grid {
+    flex: 1 1 auto; min-height: 0;
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    grid-template-rows: auto repeat(var(--rows), minmax(0, 1fr));
+    gap: 1.05mm;
+  }
+  .wd {
+    text-align: center; font-size: 7.4pt; font-weight: 800; letter-spacing: 0.01em;
+    color: #14532d; background: #ecfdf5;
+    border: 0.32mm solid #166534; border-radius: 1.15mm;
+    padding: 0.75mm 0.3mm; line-height: 1.15;
+  }
+  .wd.we { background: #d1fae5; border-bottom-width: 0.75mm; }
+  .day {
+    min-width: 0; min-height: 0; overflow: hidden;
+    display: flex; flex-direction: column;
+    background: #fff; border: 0.28mm solid #e5e7eb; border-radius: 1.45mm;
+    padding: 0.9mm 1.15mm 0.8mm;
+  }
+  .day.we { background: #f4f7f5; border-color: #d9e4dc; }
+  .day.out { background: #f8fafc; border-color: #eef2f6; }
+  .day.holiday {
+    background: #fffbeb; border-color: #f5d48a;
+    box-shadow: inset 0 0.7mm 0 #b45309;
+  }
+  .day.holiday.we { background: #fff7e8; }
+  .day.vacation {
+    border-style: dashed; border-color: #ea580c;
+    background-color: #fff7ed;
+    background-image: repeating-linear-gradient(-45deg, rgba(154, 52, 18, 0.11) 0 1.05mm, transparent 1.05mm 2.5mm);
+  }
+  .top { display: flex; align-items: baseline; justify-content: space-between; gap: 1mm; min-width: 0; }
+  .num { font-size: 11pt; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+  .day.we .num { color: #14532d; }
+  .hol {
+    min-width: 0; font-size: 6.3pt; font-weight: 800; color: #92400e;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .carry {
+    margin-top: 0.55mm; padding-left: 1.15mm;
+    border-left: 0.75mm solid #4b5563;
+    font-size: 6.3pt; font-weight: 750; color: #374151; line-height: 1.15;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .carry.am { border-left-color: #1d4ed8; }
+  .carry.pm { border-left-color: #be185d; }
+  .carry.night { border-left-color: #6d28d9; }
+  .carry.day { border-left-color: #047857; }
+  .carry.custom { border-left-color: #b45309; }
+  .shifts { display: flex; flex-direction: column; gap: 0.65mm; margin-top: 0.7mm; min-height: 0; }
+  .shift {
+    position: relative; overflow: hidden;
+    border-radius: 1.05mm; border: 0.25mm solid rgba(17, 24, 39, 0.08);
+    border-left-width: 1.55mm; padding: 0.55mm 1.15mm 0.6mm 1.35mm;
+    line-height: 1.12;
+  }
+  .shift .k {
+    display: block; font-size: 6pt; font-weight: 800; letter-spacing: 0.045em;
+    text-transform: uppercase; color: #1f2937;
+  }
+  .shift .t {
+    display: block; font-size: 8.4pt; font-weight: 800; color: #111827;
+    font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+  }
+  .shift.am { background: #e7f1fc; border-left-color: #1d4ed8; }
+  .shift.pm {
+    background-color: #fde8f3; border-left-color: #be185d;
+    background-image: repeating-linear-gradient(135deg, transparent 0 2mm, rgba(131, 24, 67, 0.16) 2mm 2.35mm);
+  }
+  .shift.night {
+    background-color: #efe9fe; border-left-color: #6d28d9;
+    background-image: repeating-linear-gradient(to bottom, transparent 0 1.35mm, rgba(76, 29, 149, 0.16) 1.35mm 1.7mm);
+  }
+  .shift.day {
+    background-color: #e5f8ef; border-left-color: #047857;
+    background-image: radial-gradient(rgba(6, 78, 59, 0.22) 0.32mm, transparent 0.38mm);
+    background-size: 2.15mm 2.15mm;
+  }
+  .shift.custom {
+    background: #fff6db; border-left-color: #b45309; border-left-style: dashed;
+  }
+  .shifts.many .shift { padding: 0.3mm 1mm 0.35mm 1.15mm; }
+  .shifts.many .t { font-size: 7.4pt; }
+  .vac {
+    margin-top: auto; align-self: flex-start;
+    font-size: 6.5pt; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+    color: #9a3412; border: 0.3mm dashed #c2410c; border-radius: 0.8mm;
+    padding: 0.25mm 1.05mm; background: rgba(255, 255, 255, 0.9);
+  }
+  .day.vacation:not(.busy) .vac {
+    align-self: stretch; text-align: center; font-size: 8pt; letter-spacing: 0.14em;
+    padding: 0.7mm 1mm; margin-top: 1.2mm;
+  }
+  .foot {
+    flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
+    gap: 4mm; border-top: 0.4mm solid #111827; padding-top: 1.5mm;
+  }
+  .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 1mm 3mm; min-width: 0; }
+  .key { display: inline-flex; align-items: center; font-size: 7pt; font-weight: 700; color: #1f2937; white-space: nowrap; }
+  .key i {
+    width: 3.4mm; height: 3.1mm; border-radius: 0.55mm; margin-right: 1.05mm;
+    border-left: 0.9mm solid #111; display: inline-block;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .key.am i { background: #e7f1fc; border-left-color: #1d4ed8; }
+  .key.pm i {
+    background-color: #fde8f3; border-left-color: #be185d;
+    background-image: repeating-linear-gradient(135deg, transparent 0 1.1mm, rgba(131, 24, 67, 0.2) 1.1mm 1.35mm);
+  }
+  .key.night i {
+    background-color: #efe9fe; border-left-color: #6d28d9;
+    background-image: repeating-linear-gradient(to bottom, transparent 0 0.7mm, rgba(76, 29, 149, 0.22) 0.7mm 0.95mm);
+  }
+  .key.day i {
+    background-color: #e5f8ef; border-left-color: #047857;
+    background-image: radial-gradient(rgba(6, 78, 59, 0.28) 0.28mm, transparent 0.34mm);
+    background-size: 1.5mm 1.5mm;
+  }
+  .key.custom i { background: #fff6db; border-left: 0.9mm dashed #b45309; }
+  .key.vac i { background: #fff7ed; border: 0.3mm dashed #c2410c; }
+  .key.hol i { background: #fffbeb; border: 0.3mm solid #b45309; box-shadow: inset 0 0.7mm 0 #b45309; }
+  .totals { display: flex; gap: 5.5mm; flex: 0 0 auto; }
+  .tot span {
+    display: block; font-size: 6.4pt; font-weight: 800; letter-spacing: 0.08em;
+    text-transform: uppercase; color: #4b5563;
+  }
+  .tot strong { font-size: 13pt; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.05; }
+  .rows-6 .num { font-size: 10pt; }
+  .rows-6 .shift { padding: 0.35mm 1mm 0.4mm 1.15mm; }
+  .rows-6 .shift .k { font-size: 5.6pt; }
+  .rows-6 .shift .t { font-size: 7.5pt; }
+  .rows-6 .day { padding: 0.65mm 0.9mm 0.55mm; }
+  .rows-6 .vac { font-size: 6pt; }
+  .rows-6 .day.vacation:not(.busy) .vac { font-size: 7.2pt; padding: 0.45mm 0.6mm; }
+  @media screen {
+    html, body { background: #d8dee6; height: auto; overflow: auto; width: auto; }
+    body { padding: 8mm 0 12mm; }
+    .sheet { margin: 0 auto; box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18); }
+  }
+</style></head><body class="person-cal">
+<div class="sheet rows-${rows}" style="--rows:${rows}">
+  <header class="head">
+    <div class="brandline">
+      <div class="brand">Rohe Hostel</div>
+      <div class="team">${escapeHtml(team().name)}</div>
+    </div>
+    <div class="titleline">
+      <h1><i class="pid" style="background:${escapeHtml(color)}"></i><span>${escapeHtml(name)}</span></h1>
+      <div class="month">${escapeHtml(monthName)} ${state.year}</div>
+    </div>
+    ${vacText ? `<div class="vacline">Puhkus ${escapeHtml(vacText)}</div>` : ""}
+  </header>
+  <div class="grid" role="grid" aria-label="${escapeHtml(name)}, ${escapeHtml(monthName)} ${state.year}">
+    ${wdHead}
+    ${cells}
+  </div>
+  <footer class="foot">
+    <div class="legend">${legend}</div>
+    <div class="totals">
+      <div class="tot"><span>Vahetusi</span><strong>${stats.shifts}</strong></div>
+      <div class="tot"><span>Tunde</span><strong>${escapeHtml(formatHours(stats.minutes))}</strong></div>
+    </div>
+  </footer>
+</div>
+<script>window.onload=function(){window.print()}<\/script>
+</body></html>`;
+  }
+
+  function exportPrintableHTML() {
+    refreshVacationMap();
+    const picked = checkedMonthPeople();
+    const one = picked.length === 1 ? picked[0] : null;
+    const html = one ? buildPersonMonthPrintHTML(one) : buildTeamListPrintHTML();
+    const who = one ? "-" + String(one.name).replace(/[^\p{L}\p{N}-]+/gu, "-") : "";
+    openPrintDocument(html, `graafik-${monthKey(state.year, state.month)}${who}.html`);
   }
 
   function downloadBlob(blob, name) {
